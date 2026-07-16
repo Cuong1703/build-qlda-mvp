@@ -113,11 +113,11 @@ where public.projects.name = 'Chung cư Riverside';
 
 -- Giao dịch mẫu cho dự án Riverside
 insert into public.transactions (project_id, type, category, description, amount, status, txn_date)
-select id, x.type, x.category, x.desc, x.amount, x.status, x.d::date
+select id, x.type, x.category, x.descr, x.amount, x.status, x.d::date
 from public.projects, (values
   ('chi','Vật tư','Thanh toán vật tư thép - đợt 3', 1250, 'da_duyet', '2026-07-12'),
   ('thu','Thanh toán CĐT','CĐT thanh toán đợt 4', 4200, 'da_duyet', '2026-07-11'),
   ('chi','Nhân công','Tạm ứng nhà thầu phụ cơ điện', 860, 'cho_duyet', '2026-07-10'),
   ('chi','Nhân công','Chi phí nhân công tháng 6', 2100, 'da_duyet', '2026-07-09')
-) as x(type, category, desc, amount, status, d)
+) as x(type, category, descr, amount, status, d)
 where public.projects.name = 'Chung cư Riverside';
