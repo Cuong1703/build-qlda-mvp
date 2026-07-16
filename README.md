@@ -67,3 +67,4 @@ Vercel sẽ tự deploy lại, truy cập qua đường dẫn `<ten-project>.ver
 > Lưu ý bảo mật: `anon public key` được thiết kế để lộ ra trình duyệt (an toàn), việc bảo vệ dữ liệu
 > nằm ở Row Level Security (RLS) đã bật sẵn trong `supabase-schema.sql`. Trước khi dùng thật cho nhiều
 > công ty/khách hàng, nên siết RLS theo `user_id`/vai trò thay vì cho phép mọi user đã đăng nhập xem hết.
+"# build-qlda-mvp" 
