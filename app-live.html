@@ -257,12 +257,12 @@ const fmt = (n) => Number(n||0).toLocaleString("vi-VN");
 
 // ---- init & config check ----
 window.addEventListener('load', () => {
-  if (!window.SUPABASE_URL || SUPABASE_URL.includes("xxxxxxxxxxxx")) {
+  if (!window.SUPABASE_URL || window.SUPABASE_URL.includes("xxxxxxxxxxxx")) {
     document.getElementById('configHint').innerHTML =
       '⚠️ Chưa cấu hình Supabase. Mở file <b>config.js</b> và điền SUPABASE_URL / SUPABASE_ANON_KEY.';
     return;
   }
-  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  sb = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
   sb.auth.getSession().then(({data}) => {
     if (data.session) showApp(data.session);
   });
