@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BUILD QLDA — Ứng dụng quản lý dự án</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --base:#08070C; --surface:#121018; --surface2:#1A1722; --border:#2A2733;
+    --primary:#7C3AED; --secondary:#4F46E5;
+    --text:#FFFFFF; --text2:#A1A0AC; --muted:#6B6975;
+    --success:#22C55E; --warning:#F59E0B; --danger:#EF4444; --info:#38BDF8;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--base); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;}
+  button{font-family:inherit; cursor:pointer;}
+  input{font-family:inherit;}
+  .hidden{display:none !important;}
+
+  /* ---------- shared ---------- */
+  .btn{border:none; border-radius:999px; padding:10px 18px; font-size:13px; font-weight:600;}
+  .btn-primary{background:linear-gradient(135deg,var(--primary),var(--secondary)); color:#fff;}
+  .btn-ghost{background:var(--surface2); border:1px solid var(--border); color:var(--text);}
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:22px; padding:22px;}
+  .badge{display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:5px 11px; font-size:12px; font-weight:600;}
+  .badge-dot{width:6px; height:6px; border-radius:999px;}
+  .b-success{background:rgba(34,197,94,.1); color:var(--success);}
+  .b-warning{background:rgba(245,158,11,.1); color:var(--warning);}
+  .b-danger{background:rgba(239,68,68,.1); color:var(--danger);}
+  .b-muted{background:rgba(107,105,117,.1); color:var(--muted);}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{text-align:left; color:var(--muted); font-weight:500; padding-bottom:10px; border-bottom:1px solid var(--border);}
+  td{padding:12px 0; border-bottom:1px solid var(--border); color:var(--text2);}
+  tr:last-child td{border-bottom:none;}
+  .grid{display:grid; gap:16px;}
+  .g5{grid-template-columns:repeat(5,1fr);}
+  .g4{grid-template-columns:repeat(4,1fr);}
+  .g3{grid-template-columns:repeat(3,1fr);}
+  .g2{grid-template-columns:2fr 1fr;}
+  @media (max-width:1000px){ .g5,.g4,.g3{grid-template-columns:repeat(2,1fr);} .g2{grid-template-columns:1fr;} }
+  @media (max-width:600px){ .g5,.g4,.g3{grid-template-columns:1fr;} }
+  .avatar{border-radius:999px; display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff;
+    background:linear-gradient(135deg,var(--secondary),var(--primary));}
+
+  /* ---------- login ---------- */
+  #loginView{min-height:100vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;}
+  .orb{position:absolute; border-radius:999px; filter:blur(80px); opacity:.3; pointer-events:none;
+    background:radial-gradient(circle at 30% 30%, var(--primary), var(--secondary) 45%, transparent 70%);
+    top:-160px; left:50%; transform:translateX(-50%); width:420px; height:420px;}
+  .login-box{position:relative; z-index:1; width:100%; max-width:380px; padding:0 20px;}
+  .login-head{text-align:center; margin-bottom:28px;}
+  .login-logo{width:48px; height:48px; border-radius:16px; margin:0 auto 14px; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(135deg,var(--primary),var(--secondary)); font-weight:800; font-size:18px;}
+  .field{display:flex; flex-direction:column; gap:6px; margin-bottom:14px;}
+  .field label{font-size:12px; color:var(--muted); font-weight:600;}
+  .field input{background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:11px 13px; color:var(--text); font-size:14px; outline:none;}
+  .login-box .btn-primary{width:100%; padding:12px; margin-top:6px;}
+
+  /* ---------- app shell ---------- */
+  #appView{display:flex; min-height:100vh;}
+  aside{width:230px; flex-shrink:0; background:var(--surface); border-right:1px solid var(--border);
+    padding:16px; display:flex; flex-direction:column; gap:4px;}
+  .brand{display:flex; align-items:center; gap:8px; padding:10px 8px 20px;}
+  .brand .badge-logo{width:30px; height:30px; border-radius:10px; background:linear-gradient(135deg,var(--primary),var(--secondary));
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px;}
+  .brand span{font-size:14px; font-weight:700;}
+  .navitem{display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; border:none; background:transparent;
+    color:var(--text2); font-size:13px; font-weight:600; text-align:left;}
+  .navitem .ic{font-size:15px;}
+  .navitem.active{background:rgba(124,58,237,.12); color:var(--text);}
+  .side-user{margin-top:auto; display:flex; align-items:center; gap:10px; background:var(--surface2); border-radius:12px; padding:10px;}
+  .side-user .avatar{width:32px; height:32px; font-size:12px;}
+  .side-user .name{font-size:12px; font-weight:600;}
+  .side-user .role{font-size:11px; color:var(--muted);}
+
+  main{flex:1; position:relative; overflow-x:hidden;}
+  main .orb{top:-160px; right:-120px; width:380px; height:380px;}
+  header.topbar{position:relative; z-index:1; display:flex; align-items:center; justify-content:space-between;
+    padding:20px 32px; border-bottom:1px solid var(--border);}
+  header.topbar h1{font-size:20px; font-weight:700; margin:0;}
+  .topbar-actions{display:flex; align-items:center; gap:12px;}
+  .search{display:flex; align-items:center; gap:8px; background:var(--surface2); border:1px solid var(--border);
+    border-radius:999px; padding:8px 14px;}
+  .search input{background:transparent; border:none; outline:none; color:var(--text); font-size:13px; width:170px;}
+  .icon-btn{width:36px; height:36px; border-radius:999px; background:var(--surface2); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; color:var(--text2); font-size:15px;}
+  .content{position:relative; z-index:1; padding:32px; display:flex; flex-direction:column; gap:24px;}
+
+  .metric-card{display:flex; flex-direction:column; gap:14px;}
+  .metric-top{display:flex; align-items:center; justify-content:space-between;}
+  .metric-top .label{font-size:13px; color:var(--text2);}
+  .metric-icon{width:34px; height:34px; border-radius:999px; background:rgba(124,58,237,.12); display:flex; align-items:center; justify-content:center;}
+  .metric-value{font-size:28px; font-weight:800;}
+  .metric-sub{font-size:12px; color:var(--muted);}
+
+  .progress-track{height:6px; border-radius:999px; background:var(--surface2);}
+  .progress-fill{height:6px; border-radius:999px; background:linear-gradient(90deg,var(--primary),var(--secondary));}
+
+  .tabs{display:inline-flex; gap:4px; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:4px; width:fit-content;}
+  .tab{border:none; background:transparent; border-radius:999px; padding:9px 16px; font-size:12px; font-weight:600; color:var(--text2);}
+  .tab.active{background:rgba(124,58,237,.12); color:var(--text);}
+
+  .kanban-col{background:var(--surface2); border-radius:16px; padding:12px;}
+  .kanban-col h4{font-size:11px; text-transform:uppercase; color:var(--muted); margin:0 0 10px;}
+  .kanban-card{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px; font-size:13px; margin-bottom:8px;}
+  .kanban-card small{display:block; margin-top:6px; color:var(--muted); font-size:11px;}
+
+  .row-item{display:flex; align-items:center; justify-content:space-between; background:var(--surface2); border-radius:16px; padding:12px 14px; margin-bottom:8px;}
+  .row-item:last-child{margin-bottom:0;}
+  .row-left{display:flex; align-items:center; gap:10px;}
+  .row-left .name{font-size:13px; font-weight:600;}
+  .row-left .sub{font-size:11px; color:var(--muted);}
+
+  .proj-card{cursor:pointer;}
+  .proj-card:hover{transform:translateY(-3px); transition:transform .15s;}
+
+  .switch{width:42px; height:24px; border-radius:999px; background:var(--border); position:relative; flex-shrink:0;}
+  .switch.on{background:var(--primary);}
+  .switch::after{content:""; position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:999px; background:#fff; transition:left .15s;}
+  .switch.on::after{left:20px;}
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN VIEW ================= -->
+<div id="loginView">
+  <div class="orb"></div>
+  <div class="login-box">
+    <div class="login-head">
+      <div class="login-logo">B</div>
+      <h1 style="font-size:17px; margin:0 0 6px;">Đăng nhập BUILD QLDA</h1>
+      <p style="font-size:13px; color:var(--muted); margin:0;">Quản lý dự án, tiến độ &amp; dòng tiền tập trung</p>
+    </div>
+    <div class="card">
+      <div class="field">
+        <label>Email</label>
+        <input type="email" value="hai.nguyen@buildqlda.vn">
+      </div>
+      <div class="field">
+        <label>Mật khẩu</label>
+        <input type="password" value="********">
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text2); margin-bottom:6px;">
+        <label style="display:flex; gap:6px; align-items:center;"><input type="checkbox" checked> Ghi nhớ đăng nhập</label>
+        <span style="color:var(--primary);">Quên mật khẩu?</span>
+      </div>
+      <button class="btn btn-primary" onclick="login()">Đăng nhập</button>
+    </div>
+    <p style="text-align:center; font-size:12px; color:var(--muted); margin-top:16px;">
+      Đây là giao diện minh họa — nhấn "Đăng nhập" để xem thử ứng dụng.
+    </p>
+  </div>
+</div>
+
+<!-- ================= APP VIEW ================= -->
+<div id="appView" class="hidden">
+  <aside>
+    <div class="brand"><span class="badge-logo">B</span><span>BUILD QLDA</span></div>
+    <button class="navitem active" data-page="dashboard" onclick="goPage('dashboard')"><span class="ic">🏠</span>Tổng quan</button>
+    <button class="navitem" data-page="projects" onclick="goPage('projects')"><span class="ic">📁</span>Dự án</button>
+    <button class="navitem" data-page="progress" onclick="goPage('progress')"><span class="ic">📊</span>Tiến độ</button>
+    <button class="navitem" data-page="cashflow" onclick="goPage('cashflow')"><span class="ic">💰</span>Dòng tiền</button>
+    <button class="navitem" data-page="reports" onclick="goPage('reports')"><span class="ic">📄</span>Báo cáo</button>
+    <button class="navitem" data-page="settings" onclick="goPage('settings')"><span class="ic">⚙️</span>Cài đặt</button>
+    <div class="side-user">
+      <div class="avatar" style="width:32px;height:32px;font-size:12px;">NH</div>
+      <div><div class="name">Nguyễn Hải</div><div class="role">Quản lý dự án</div></div>
+    </div>
+  </aside>
+
+  <main>
+    <div class="orb"></div>
+    <header class="topbar">
+      <h1 id="pageTitle">Tổng quan</h1>
+      <div class="topbar-actions">
+        <div class="search"><span>🔍</span><input placeholder="Tìm dự án, giao dịch..."></div>
+        <button class="icon-btn" onclick="goPage('notifications')">🔔</button>
+        <button class="btn btn-primary">+ Dự án mới</button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- ---- DASHBOARD ---- -->
+      <section id="page-dashboard">
+        <div class="grid g5" style="margin-bottom:24px;">
+          <div class="card metric-card"><div class="metric-top"><span class="label">Dự án đang chạy</span><div class="metric-icon">🏢</div></div><div class="metric-value">12</div><div class="metric-sub">4 dự án mới quý này</div></div>
+          <div class="card metric-card"><div class="metric-top"><span class="label">Tổng ngân sách</span><div class="metric-icon">💼</div></div><div class="metric-value">186 tỷ</div><div class="metric-sub">Toàn bộ danh mục</div></div>
+          <div class="card metric-card"><div class="metric-top"><span class="label">Đã giải ngân</span><div class="metric-icon">📈</div></div><div class="metric-value">121 tỷ</div><div class="metric-sub">65% ngân sách</div></div>
+          <div class="card metric-card"><div class="metric-top"><span class="label">Tiến độ trung bình</span><div class="metric-icon">📐</div></div><div class="metric-value">68%</div><div class="metric-sub">So với kế hoạch</div></div>
+          <div class="card metric-card"><div class="metric-top"><span class="label">Dự án cần chú ý</span><div class="metric-icon">⚠️</div></div><div class="metric-value">2</div><div class="metric-sub">Trễ hạn / vượt chi</div></div>
+        </div>
+
+        <div class="grid g2" style="margin-bottom:24px;">
+          <div class="card">
+            <h3 style="margin:0 0 4px; font-size:15px;">Dòng tiền 6 tháng gần nhất</h3>
+            <p style="margin:0 0 14px; font-size:12px; color:var(--muted);">Đơn vị: triệu VNĐ</p>
+            <canvas id="cashflowChart" height="120"></canvas>
+          </div>
+          <div class="card">
+            <h3 style="margin:0 0 16px; font-size:15px;">Cần chú ý</h3>
+            <div class="row-item"><div style="width:100%;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span class="name" style="font-size:13px;">Nhà máy Long Thành</span><span class="badge b-warning"><span class="badge-dot" style="background:var(--warning);"></span>Sắp trễ</span></div>
+              <div class="progress-track"><div class="progress-fill" style="width:45%;"></div></div>
+              <small style="color:var(--muted); font-size:11px;">45% hoàn thành</small>
+            </div></div>
+            <div class="row-item"><div style="width:100%;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span class="name" style="font-size:13px;">TTTM Central</span><span class="badge b-danger"><span class="badge-dot" style="background:var(--danger);"></span>Vượt ngân sách</span></div>
+              <div class="progress-track"><div class="progress-fill" style="width:31%; background:linear-gradient(90deg,var(--danger),var(--warning));"></div></div>
+              <small style="color:var(--muted); font-size:11px;">31% hoàn thành</small>
+            </div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+            <h3 style="margin:0; font-size:15px;">Danh sách dự án</h3>
+            <span style="font-size:13px; color:var(--primary); cursor:pointer; font-weight:600;" onclick="goPage('projects')">Xem tất cả →</span>
+          </div>
+          <table>
+            <thead><tr><th>Dự án</th><th>Chủ đầu tư</th><th>Tiến độ</th><th>Ngân sách</th><th>Trạng thái</th></tr></thead>
+            <tbody>
+              <tr><td style="color:var(--text); font-weight:600;">Chung cư Riverside</td><td>CĐT An Phát</td><td>78%</td><td>31.500 / 42.000 triệu</td><td><span class="badge b-success"><span class="badge-dot" style="background:var(--success);"></span>Đúng tiến độ</span></td></tr>
+              <tr><td style="color:var(--text); font-weight:600;">Nhà máy Long Thành</td><td>CĐT Kim Long</td><td>45%</td><td>38.900 / 68.000 triệu</td><td><span class="badge b-warning"><span class="badge-dot" style="background:var(--warning);"></span>Sắp trễ</span></td></tr>
+              <tr><td style="color:var(--text); font-weight:600;">Khu đô thị Sunrise</td><td>CĐT Sunrise Group</td><td>92%</td><td>23.400 / 25.000 triệu</td><td><span class="badge b-success"><span class="badge-dot" style="background:var(--success);"></span>Đúng tiến độ</span></td></tr>
+              <tr><td style="color:var(--text); font-weight:600;">TTTM Central</td><td>CĐT Central Retail</td><td>31%</td><td>41.200 / 51.000 triệu</td><td><span class="badge b-danger"><span class="badge-dot" style="background:var(--danger);"></span>Vượt ngân sách</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---- PROJECTS LIST ---- -->
+      <section id="page-projects" class="hidden">
+        <div id="projectsList">
+          <div style="display:flex; justify-content:space-between; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+            <div class="search"><span>🔍</span><input placeholder="Tìm theo tên dự án, chủ đầu tư..." style="width:220px;"></div>
+            <button class="btn btn-primary">+ Tạo dự án mới</button>
+          </div>
+          <div class="grid g2">
+            <div class="card proj-card" onclick="openProject()">
+              <div style="display:flex; justify-content:space-between;"><div><h4 style="margin:0; font-size:15px;">Chung cư Riverside</h4><p style="margin:4px 0 0; font-size:12px; color:var(--muted);">CĐT An Phát</p></div><span class="badge b-success"><span class="badge-dot" style="background:var(--success);"></span>Đúng tiến độ</span></div>
+              <div class="progress-track" style="margin-top:16px;"><div class="progress-fill" style="width:78%;"></div></div>
+              <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:var(--muted);"><span>Ngân sách: 42.000 triệu</span><span style="color:var(--primary); font-weight:600;">Xem chi tiết →</span></div>
+            </div>
+            <div class="card proj-card" onclick="openProject()">
+              <div style="display:flex; justify-content:space-between;"><div><h4 style="margin:0; font-size:15px;">Nhà máy Long Thành</h4><p style="margin:4px 0 0; font-size:12px; color:var(--muted);">CĐT Kim Long</p></div><span class="badge b-warning"><span class="badge-dot" style="background:var(--warning);"></span>Sắp trễ</span></div>
+              <div class="progress-track" style="margin-top:16px;"><div class="progress-fill" style="width:45%;"></div></div>
+              <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:var(--muted);"><span>Ngân sách: 68.000 triệu</span><span style="color:var(--primary); font-weight:600;">Xem chi tiết →</span></div>
+            </div>
+            <div class="card proj-card" onclick="openProject()">
+              <div style="display:flex; justify-content:space-between;"><div><h4 style="margin:0; font-size:15px;">Khu đô thị Sunrise</h4><p style="margin:4px 0 0; font-size:12px; color:var(--muted);">CĐT Sunrise Group</p></div><span class="badge b-success"><span class="badge-dot" style="background:var(--success);"></span>Đúng tiến độ</span></div>
+              <div class="progress-track" style="margin-top:16px;"><div class="progress-fill" style="width:92%;"></div></div>
+              <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:var(--muted);"><span>Ngân sách: 25.000 triệu</span><span style="color:var(--primary); font-weight:600;">Xem chi tiết →</span></div>
+            </div>
+            <div class="card proj-card" onclick="openProject()">
+              <div style="display:flex; justify-content:space-between;"><div><h4 style="margin:0; font-size:15px;">TTTM Central</h4><p style="margin:4px 0 0; font-size:12px; color:var(--muted);">CĐT Central Retail</p></div><span class="badge b-danger"><span class="badge-dot" style="background:var(--danger);"></span>Vượt ngân sách</span></div>
+              <div class="progress-track" style="margin-top:16px;"><div class="progress-fill" style="width:31%; background:linear-gradient(90deg,var(--danger),var(--warning));"></div></div>
+              <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:var(--muted);"><span>Ngân sách: 51.000 triệu</span><span style="color:var(--primary); font-weight:600;">Xem chi tiết →</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="projectDetail" class="hidden">
+          <button class="btn btn-ghost" style="margin-bottom:16px;" onclick="closeProject()">← Quay lại danh sách dự án</button>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+            <div><h2 style="margin:0; font-size:19px;">Chung cư Riverside</h2><p style="margin:4px 0 0; font-size:13px; color:var(--muted);">CĐT An Phát · Ngân sách 42.000 triệu</p></div>
+            <span class="badge b-success"><span class="badge-dot" style="background:var(--success);"></span>Đúng tiến độ</span>
+          </div>
+
+          <div class="tabs" style="margin-bottom:20px;">
+            <button class="tab active" onclick="switchDetailTab(this,'d-overview')">Tổng quan</button>
+            <button class="tab" onclick="switchDetailTab(this,'d-documents')">Tài liệu</button>
+            <button class="tab" onclick="switchDetailTab(this,'d-sitelog')">Nhật ký</button>
+            <button class="tab" onclick="switchDetailTab(this,'d-members')">Thành viên</button>
+          </div>
+
+          <div id="d-overview" class="detail-tab">
+            <div class="grid g3">
+              <div class="card metric-card"><div class="metric-top"><span class="label">Tiến độ tổng thể</span><div class="metric-icon">📊</div></div><div class="metric-value">78%</div></div>
+              <div class="card metric-card"><div class="metric-top"><span class="label">Đã giải ngân</span><div class="metric-icon">💰</div></div><div class="metric-value">31.500tr</div><div class="metric-sub">/ 42.000 triệu</div></div>
+              <div class="card metric-card"><div class="metric-top"><span class="label">Thành viên dự án</span><div class="metric-icon">👥</div></div><div class="metric-value">4</div></div>
+            </div>
+          </div>
+
+          <div id="d-documents" class="detail-tab hidden">
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; margin-bottom:14px;"><h3 style="margin:0; font-size:15px;">Tài liệu &amp; hồ sơ</h3><button class="btn btn-ghost" style="padding:7px 14px; font-size:12px;">📎 Tải lên</button></div>
+              <div class="row-item"><div class="row-left"><div class="avatar" style="width:32px;height:32px; background:rgba(56,189,248,.15); color:var(--info);">📄</div><div><div class="name">Hợp đồng thi công - Riverside.pdf</div><div class="sub">Hợp đồng · 2.4 MB · Cập nhật 10/07/2026</div></div></div><span class="badge b-muted">v3</span></div>
+              <div class="row-item"><div class="row-left"><div class="avatar" style="width:32px;height:32px; background:rgba(56,189,248,.15); color:var(--info);">📄</div><div><div class="name">Bản vẽ kết cấu tầng 5-10.dwg</div><div class="sub">Bản vẽ · 18.1 MB · Cập nhật 08/07/2026</div></div></div><span class="badge b-muted">v2</span></div>
+              <div class="row-item"><div class="row-left"><div class="avatar" style="width:32px;height:32px; background:rgba(56,189,248,.15); color:var(--info);">📄</div><div><div class="name">Biên bản nghiệm thu móng.pdf</div><div class="sub">Biên bản · 1.1 MB · Cập nhật 02/07/2026</div></div></div><span class="badge b-muted">v1</span></div>
+            </div>
+          </div>
+
+          <div id="d-sitelog" class="detail-tab hidden">
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; margin-bottom:14px;"><h3 style="margin:0; font-size:15px;">Nhật ký công trình</h3><button class="btn btn-ghost" style="padding:7px 14px; font-size:12px;">+ Ghi nhật ký</button></div>
+              <div class="row-item" style="flex-direction:column; align-items:flex-start;">
+                <div style="display:flex; justify-content:space-between; width:100%; font-size:11px; color:var(--muted); margin-bottom:6px;"><span>🕐 12/07/2026 · Trần Minh</span><span>🖼 6 ảnh</span></div>
+                <p style="margin:0; font-size:13px; color:var(--text);">Hoàn thành đổ bê tông sàn tầng 8, thời tiết thuận lợi.</p>
+              </div>
+              <div class="row-item" style="flex-direction:column; align-items:flex-start;">
+                <div style="display:flex; justify-content:space-between; width:100%; font-size:11px; color:var(--muted); margin-bottom:6px;"><span>🕐 11/07/2026 · Trần Minh</span><span>🖼 4 ảnh</span></div>
+                <p style="margin:0; font-size:13px; color:var(--text);">Lắp đặt cốt thép tầng 9, phát hiện sai lệch nhỏ đã xử lý.</p>
+              </div>
+            </div>
+          </div>
+
+          <div id="d-members" class="detail-tab hidden">
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; margin-bottom:14px;"><h3 style="margin:0; font-size:15px;">Thành viên dự án</h3><button class="btn btn-ghost" style="padding:7px 14px; font-size:12px;">+ Thêm thành viên</button></div>
+              <div class="row-item"><div class="row-left"><div class="avatar" style="width:32px;height:32px; font-size:12px;">H</div><div><div class="name">Nguyễn Hải</div><div class="sub">hai.nguyen@buildqlda.vn</div></div></div><span class="badge b-muted">Quản lý dự án</span></div>
+              <div class="row-item"><div class="row-left"><div class="avatar" style="width:32px;height:32px; font-size:12px;">M</div><div><div class="name">Trần Minh</div><div class="sub">minh.tran@buildqlda.vn</div></div></div><span class="badge b-muted">Giám sát công trình</span></div>
+              <div class="row-item"><div class="row-left"><div class="avatar" style="width:32px;height:32px; font-size:12px;">L</div><div><div class="name">Lê Thu Lan</div><div class="sub">lan.le@buildqlda.vn</div></div></div><span class="badge b-muted">Kế toán</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---- PROGRESS ---- -->
+      <section id="page-progress" class="hidden">
+        <div class="card" style="margin-bottom:20px;">
+          <h3 style="margin:0 0 4px; font-size:15px;">Chung cư Riverside — Kế hoạch vs Thực tế</h3>
+          <p style="margin:0 0 18px; font-size:12px; color:var(--muted);">Theo hạng mục công việc (WBS)</p>
+          <div style="display:flex; flex-direction:column; gap:16px;">
+            <div><div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;"><span>Móng &amp; kết cấu ngầm</span><span style="color:var(--text2);">100% / 100%</span></div><div class="progress-track"><div class="progress-fill" style="width:100%;"></div></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;"><span>Kết cấu bê tông cốt thép</span><span style="color:var(--text2);">82% / 90%</span></div><div class="progress-track"><div class="progress-fill" style="width:82%;"></div></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;"><span>Xây tô &amp; hoàn thiện thô</span><span style="color:var(--text2);">48% / 65%</span></div><div class="progress-track"><div class="progress-fill" style="width:48%;"></div></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;"><span>Cơ điện (M&amp;E)</span><span style="color:var(--danger);">22% / 40%</span></div><div class="progress-track"><div class="progress-fill" style="width:22%; background:linear-gradient(90deg,var(--danger),var(--warning));"></div></div></div>
+            <div><div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;"><span>Hoàn thiện nội thất</span><span style="color:var(--text2);">5% / 15%</span></div><div class="progress-track"><div class="progress-fill" style="width:5%;"></div></div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; margin-bottom:16px;"><h3 style="margin:0; font-size:15px;">Bảng công việc (Kanban)</h3><button class="btn btn-ghost" style="padding:7px 14px; font-size:12px;">+ Thêm công việc</button></div>
+          <div class="grid g4">
+            <div class="kanban-col"><h4>Chưa bắt đầu (2)</h4><div class="kanban-card">Lắp đặt thang máy<small>🕐 3 ngày còn lại</small></div><div class="kanban-card">Sơn ngoại thất<small>🕐 3 ngày còn lại</small></div></div>
+            <div class="kanban-col"><h4>Đang thực hiện (2)</h4><div class="kanban-card">Cơ điện tầng 5-10<small>🕐 3 ngày còn lại</small></div><div class="kanban-card">Ốp lát tầng hầm<small>🕐 3 ngày còn lại</small></div></div>
+            <div class="kanban-col"><h4>Chờ nghiệm thu (2)</h4><div class="kanban-card">Kết cấu tầng 3<small>🕐 3 ngày còn lại</small></div><div class="kanban-card">Chống thấm mái<small>🕐 3 ngày còn lại</small></div></div>
+            <div class="kanban-col"><h4>Hoàn thành (2)</h4><div class="kanban-card">Móng cọc<small>🕐 3 ngày còn lại</small></div><div class="kanban-card">Tường vây<small>🕐 3 ngày còn lại</small></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---- CASHFLOW ---- -->
+      <section id="page-cashflow" class="hidden">
+        <div class="grid g4" style="margin-bottom:20px;">
+          <div class="card metric-card"><div class="metric-top"><span class="label">Ngân sách dự án</span><div class="metric-icon">💼</div></div><div class="metric-value">40.0 tỷ</div></div>
+          <div class="card metric-card"><div class="metric-top"><span class="label">Đã chi</span><div class="metric-icon">📈</div></div><div class="metric-value">36.9 tỷ</div><div class="metric-sub">92% ngân sách</div></div>
+          <div class="card metric-card"><div class="metric-top"><span class="label">Công nợ phải thu</span><div class="metric-icon">↗️</div></div><div class="metric-value">2.4 tỷ</div><div class="metric-sub">Từ chủ đầu tư</div></div>
+          <div class="card metric-card"><div class="metric-top"><span class="label">Công nợ phải trả</span><div class="metric-icon">↘️</div></div><div class="metric-value">1.1 tỷ</div><div class="metric-sub">NCC &amp; nhà thầu phụ</div></div>
+        </div>
+
+        <div class="grid g2" style="margin-bottom:20px;">
+          <div class="card"><h3 style="margin:0 0 14px; font-size:15px;">Ngân sách vs Thực chi theo hạng mục</h3><canvas id="budgetChart" height="150"></canvas></div>
+          <div class="card">
+            <h3 style="margin:0 0 14px; font-size:15px;">Cơ cấu chi phí</h3>
+            <canvas id="expenseChart" height="150"></canvas>
+            <div style="display:flex; flex-direction:column; gap:8px; margin-top:14px;">
+              <div style="display:flex; justify-content:space-between; font-size:12px;"><span style="color:var(--text2);">🟣 Vật tư</span><span>15.400 triệu</span></div>
+              <div style="display:flex; justify-content:space-between; font-size:12px;"><span style="color:var(--text2);">🔵 Nhân công</span><span>11.800 triệu</span></div>
+              <div style="display:flex; justify-content:space-between; font-size:12px;"><span style="color:var(--text2);">🟡 Thiết bị</span><span>7.600 triệu</span></div>
+              <div style="display:flex; justify-content:space-between; font-size:12px;"><span style="color:var(--text2);">⚪ Khác</span><span>2.100 triệu</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; margin-bottom:14px;"><h3 style="margin:0; font-size:15px;">Giao dịch gần đây</h3><button class="btn btn-ghost" style="padding:7px 14px; font-size:12px;">+ Tạo phiếu</button></div>
+          <table>
+            <thead><tr><th>Mã</th><th>Nội dung</th><th>Ngày</th><th style="text-align:right;">Số tiền (triệu)</th><th>Trạng thái</th></tr></thead>
+            <tbody>
+              <tr><td style="font-family:monospace; font-size:11px;">PC-0231</td><td style="color:var(--text);">Thanh toán vật tư thép - đợt 3</td><td>12/07</td><td style="text-align:right;">-1.250</td><td><span class="badge b-success"><span class="badge-dot" style="background:var(--success);"></span>Đã duyệt</span></td></tr>
+              <tr><td style="font-family:monospace; font-size:11px;">PT-0118</td><td style="color:var(--text);">CĐT thanh toán đợt 4 - Riverside</td><td>11/07</td><td style="text-align:right; color:var(--success); font-weight:600;">+4.200</td><td><span class="badge b-success"><span class="badge-dot" style="background:var(--success);"></span>Đã duyệt</span></td></tr>
+              <tr><td style="font-family:monospace; font-size:11px;">PC-0232</td><td style="color:var(--text);">Tạm ứng nhà thầu phụ cơ điện</td><td>10/07</td><td style="text-align:right;">-860</td><td><span class="badge b-warning"><span class="badge-dot" style="background:var(--warning);"></span>Chờ duyệt</span></td></tr>
+              <tr><td style="font-family:monospace; font-size:11px;">PC-0233</td><td style="color:var(--text);">Chi phí nhân công tháng 6</td><td>09/07</td><td style="text-align:right;">-2.100</td><td><span class="badge b-success"><span class="badge-dot" style="background:var(--success);"></span>Đã duyệt</span></td></tr>
+              <tr><td style="font-family:monospace; font-size:11px;">PC-0234</td><td style="color:var(--text);">Vật tư ốp lát - từ chối do thiếu chứng từ</td><td>08/07</td><td style="text-align:right;">-430</td><td><span class="badge b-danger"><span class="badge-dot" style="background:var(--danger);"></span>Từ chối</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---- REPORTS ---- -->
+      <section id="page-reports" class="hidden">
+        <div class="grid g4" style="margin-bottom:20px;">
+          <div class="card" style="display:flex; flex-direction:column; gap:14px;"><div class="metric-icon">📊</div><div><h4 style="margin:0 0 6px; font-size:14px;">Báo cáo tiến độ tuần</h4><p style="margin:0; font-size:12px; color:var(--muted); line-height:1.5;">Tổng hợp % hoàn thành theo hạng mục, so sánh kế hoạch/thực tế</p></div><button class="btn btn-ghost" style="width:100%; font-size:12px;">Tạo báo cáo (PDF) →</button></div>
+          <div class="card" style="display:flex; flex-direction:column; gap:14px;"><div class="metric-icon">💰</div><div><h4 style="margin:0 0 6px; font-size:14px;">Báo cáo tài chính tháng</h4><p style="margin:0; font-size:12px; color:var(--muted); line-height:1.5;">Thu, chi, công nợ và ngân sách còn lại theo dự án</p></div><button class="btn btn-ghost" style="width:100%; font-size:12px;">Tạo báo cáo (Excel) →</button></div>
+          <div class="card" style="display:flex; flex-direction:column; gap:14px;"><div class="metric-icon">📄</div><div><h4 style="margin:0 0 6px; font-size:14px;">So sánh nhiều dự án</h4><p style="margin:0; font-size:12px; color:var(--muted); line-height:1.5;">Benchmark tiến độ &amp; chi phí giữa các dự án đang chạy</p></div><button class="btn btn-ghost" style="width:100%; font-size:12px;">Tạo báo cáo (PDF) →</button></div>
+          <div class="card" style="display:flex; flex-direction:column; gap:14px;"><div class="metric-icon">📝</div><div><h4 style="margin:0 0 6px; font-size:14px;">Báo cáo tùy chỉnh</h4><p style="margin:0; font-size:12px; color:var(--muted); line-height:1.5;">Tự chọn khoảng thời gian, dự án và hạng mục</p></div><button class="btn btn-ghost" style="width:100%; font-size:12px;">Tạo báo cáo (Excel) →</button></div>
+        </div>
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:10px;"><div><h3 style="margin:0; font-size:15px;">Lịch sử xuất báo cáo</h3><p style="margin:4px 0 0; font-size:12px; color:var(--muted);">Tất cả báo cáo đã tạo, có thể tải lại bất kỳ lúc nào</p></div></div>
+          <table>
+            <thead><tr><th>Mã</th><th>Tên báo cáo</th><th>Dự án</th><th>Loại</th><th>Người tạo</th><th>Ngày tạo</th><th style="text-align:right;">Tải xuống</th></tr></thead>
+            <tbody>
+              <tr><td style="font-family:monospace; font-size:11px;">BC-0091</td><td style="color:var(--text);">Báo cáo tiến độ tuần 28</td><td>Chung cư Riverside</td><td>Tiến độ</td><td>Nguyễn Hải</td><td>12/07/2026</td><td style="text-align:right;"><button class="btn btn-ghost" style="padding:5px 12px; font-size:11px;">📄 ⬇</button></td></tr>
+              <tr><td style="font-family:monospace; font-size:11px;">BC-0090</td><td style="color:var(--text);">Báo cáo tài chính tháng 6</td><td>Toàn công ty</td><td>Tài chính</td><td>Kế toán Lan</td><td>05/07/2026</td><td style="text-align:right;"><button class="btn btn-ghost" style="padding:5px 12px; font-size:11px;">📊 ⬇</button></td></tr>
+              <tr><td style="font-family:monospace; font-size:11px;">BC-0089</td><td style="color:var(--text);">So sánh 4 dự án Q2</td><td>Toàn công ty</td><td>So sánh</td><td>Ban giám đốc</td><td>01/07/2026</td><td style="text-align:right;"><button class="btn btn-ghost" style="padding:5px 12px; font-size:11px;">📄 ⬇</button></td></tr>
+              <tr><td style="font-family:monospace; font-size:11px;">BC-0088</td><td style="color:var(--text);">Báo cáo tiến độ tuần 27</td><td>Nhà máy Long Thành</td><td>Tiến độ</td><td>Trần Minh</td><td>28/06/2026</td><td style="text-align:right;"><button class="btn btn-ghost" style="padding:5px 12px; font-size:11px;">📄 ⬇</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ---- NOTIFICATIONS ---- -->
+      <section id="page-notifications" class="hidden">
+        <div class="card" style="display:flex; flex-direction:column; gap:10px;">
+          <div class="row-item" style="align-items:flex-start;"><div class="row-left" style="align-items:flex-start;"><div class="metric-icon" style="background:rgba(245,158,11,.12);">⚠️</div><div><div class="name">Phiếu chi PC-0232 cần duyệt</div><div class="sub">Trần Minh vừa tạo phiếu tạm ứng nhà thầu phụ cơ điện — 860 triệu</div></div></div><span style="font-size:11px; color:var(--muted);">10 phút trước</span></div>
+          <div class="row-item" style="align-items:flex-start;"><div class="row-left" style="align-items:flex-start;"><div class="metric-icon" style="background:rgba(239,68,68,.12);">⚠️</div><div><div class="name">Hạng mục Cơ điện (M&amp;E) có nguy cơ trễ</div><div class="sub">Nhà máy Long Thành: thực tế 22% trong khi kế hoạch 40%</div></div></div><span style="font-size:11px; color:var(--muted);">1 giờ trước</span></div>
+          <div class="row-item" style="align-items:flex-start;"><div class="row-left" style="align-items:flex-start;"><div class="metric-icon" style="background:rgba(34,197,94,.12);">✅</div><div><div class="name">Báo cáo tài chính tháng 6 đã sẵn sàng</div><div class="sub">Kế toán Lan vừa tạo báo cáo, có thể tải xuống</div></div></div><span style="font-size:11px; color:var(--muted);">3 giờ trước</span></div>
+          <div class="row-item" style="align-items:flex-start;"><div class="row-left" style="align-items:flex-start;"><div class="metric-icon" style="background:rgba(56,189,248,.12);">💬</div><div><div class="name">Bình luận mới trên hạng mục Xây tô</div><div class="sub">Nguyễn Hải: "Cần bổ sung nhân công tuần tới"</div></div></div><span style="font-size:11px; color:var(--muted);">Hôm qua</span></div>
+        </div>
+      </section>
+
+      <!-- ---- SETTINGS ---- -->
+      <section id="page-settings" class="hidden">
+        <div class="tabs" style="margin-bottom:20px;">
+          <button class="tab active" onclick="switchSettingsTab(this,'s-users')">Người dùng</button>
+          <button class="tab" onclick="switchSettingsTab(this,'s-roles')">Vai trò &amp; quyền hạn</button>
+          <button class="tab" onclick="switchSettingsTab(this,'s-security')">Bảo mật</button>
+          <button class="tab" onclick="switchSettingsTab(this,'s-company')">Công ty</button>
+        </div>
+
+        <div id="s-users" class="settings-tab">
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; margin-bottom:14px;"><h3 style="margin:0; font-size:15px;">Danh sách người dùng</h3><button class="btn btn-primary" style="padding:9px 16px; font-size:12px;">+ Thêm người dùng</button></div>
+            <table>
+              <thead><tr><th>Người dùng</th><th>Vai trò</th><th>Số dự án</th><th>Trạng thái</th><th style="text-align:right;">Thao tác</th></tr></thead>
+              <tbody>
+                <tr><td><div style="display:flex; align-items:center; gap:10px;"><div class="avatar" style="width:30px;height:30px; font-size:11px;">H</div><div><div style="color:var(--text); font-weight:600;">Nguyễn Hải</div><div class="sub" style="font-size:11px;">hai.nguyen@buildqlda.vn</div></div></div></td><td><span class="badge b-muted">Quản lý dự án</span></td><td>3</td><td><span class="badge b-success"><span class="badge-dot" style="background:var(--success);"></span>Đang hoạt động</span></td><td style="text-align:right;">✏️ ⋯</td></tr>
+                <tr><td><div style="display:flex; align-items:center; gap:10px;"><div class="avatar" style="width:30px;height:30px; font-size:11px;">M</div><div><div style="color:var(--text); font-weight:600;">Trần Minh</div><div class="sub" style="font-size:11px;">minh.tran@buildqlda.vn</div></div></div></td><td><span class="badge b-muted">Giám sát công trình</span></td><td>2</td><td><span class="badge b-success"><span class="badge-dot" style="background:var(--success);"></span>Đang hoạt động</span></td><td style="text-align:right;">✏️ ⋯</td></tr>
+                <tr><td><div style="display:flex; align-items:center; gap:10px;"><div class="avatar" style="width:30px;height:30px; font-size:11px;">L</div><div><div style="color:var(--text); font-weight:600;">Lê Thu Lan</div><div class="sub" style="font-size:11px;">lan.le@buildqlda.vn</div></div></div></td><td><span class="badge b-muted">Kế toán</span></td><td>4</td><td><span class="badge b-success"><span class="badge-dot" style="background:var(--success);"></span>Đang hoạt động</span></td><td style="text-align:right;">✏️ ⋯</td></tr>
+                <tr><td><div style="display:flex; align-items:center; gap:10px;"><div class="avatar" style="width:30px;height:30px; font-size:11px;">S</div><div><div style="color:var(--text); font-weight:600;">Đỗ Văn Sơn</div><div class="sub" style="font-size:11px;">son.do@nhathauphu.vn</div></div></div></td><td><span class="badge b-muted">Nhà thầu phụ</span></td><td>1</td><td><span class="badge b-muted">🔒 Đã khóa</span></td><td style="text-align:right;">✏️ ⋯</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="s-roles" class="settings-tab hidden">
+          <div class="card">
+            <h3 style="margin:0 0 4px; font-size:15px;">Ma trận phân quyền</h3>
+            <p style="margin:0 0 16px; font-size:12px; color:var(--muted);">Quyền hạn mặc định theo từng vai trò — Admin có thể tùy chỉnh</p>
+            <table>
+              <thead><tr><th>Quyền hạn</th><th style="text-align:center;">Admin</th><th style="text-align:center;">Ban GĐ</th><th style="text-align:center;">PM</th><th style="text-align:center;">Kế toán</th><th style="text-align:center;">Giám sát</th><th style="text-align:center;">NTPhụ</th></tr></thead>
+              <tbody id="permTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="s-security" class="settings-tab hidden">
+          <div class="card" style="display:flex; flex-direction:column; gap:12px;">
+            <h3 style="margin:0 0 4px; font-size:15px;">Chính sách bảo mật</h3>
+            <div class="row-item"><span style="font-size:13px; color:var(--text);">Bắt buộc xác thực 2 lớp (2FA) cho Admin &amp; Kế toán</span><div class="switch on" onclick="this.classList.toggle('on')"></div></div>
+            <div class="row-item"><span style="font-size:13px; color:var(--text);">Tự động đăng xuất sau 30 phút không hoạt động</span><div class="switch on" onclick="this.classList.toggle('on')"></div></div>
+            <div class="row-item"><span style="font-size:13px; color:var(--text);">Giới hạn 1 phiên đăng nhập mỗi tài khoản</span><div class="switch" onclick="this.classList.toggle('on')"></div></div>
+            <div class="row-item"><span style="font-size:13px; color:var(--text);">Ghi log toàn bộ thao tác duyệt chi &amp; sửa ngân sách</span><div class="switch on" onclick="this.classList.toggle('on')"></div></div>
+          </div>
+        </div>
+
+        <div id="s-company" class="settings-tab hidden">
+          <div class="card" style="display:flex; flex-direction:column; gap:18px;">
+            <h3 style="margin:0; font-size:15px;">Thông tin công ty</h3>
+            <div style="display:flex; align-items:center; gap:16px;">
+              <div class="login-logo" style="margin:0;">B</div>
+              <button class="btn btn-ghost" style="font-size:12px;">Đổi logo</button>
+            </div>
+            <div class="grid g2" style="grid-template-columns:1fr 1fr;">
+              <div class="field" style="margin:0;"><label>Tên công ty</label><input value="Công ty CP Xây dựng An Phát" readonly></div>
+              <div class="field" style="margin:0;"><label>Mã số thuế</label><input value="0312xxxxxx" readonly></div>
+              <div class="field" style="margin:0;"><label>Địa chỉ</label><input value="Số 12, Đường Nguyễn Huệ, Q.1, TP.HCM" readonly></div>
+              <div class="field" style="margin:0;"><label>Email liên hệ</label><input value="info@anphat-construction.vn" readonly></div>
+            </div>
+            <button class="btn btn-primary" style="width:fit-content;">Lưu thay đổi</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+function login(){
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('appView').classList.remove('hidden');
+}
+
+const titles = {
+  dashboard:"Tổng quan", projects:"Dự án", progress:"Tiến độ thi công",
+  cashflow:"Dòng tiền & Ngân sách", reports:"Báo cáo", settings:"Cài đặt", notifications:"Thông báo"
+};
+
+function goPage(page){
+  document.querySelectorAll('main .content > section').forEach(s=>s.classList.add('hidden'));
+  document.getElementById('page-'+page).classList.remove('hidden');
+  document.querySelectorAll('.navitem').forEach(n=>n.classList.remove('active'));
+  const navBtn = document.querySelector('.navitem[data-page="'+page+'"]');
+  if(navBtn) navBtn.classList.add('active');
+  document.getElementById('pageTitle').textContent = titles[page];
+  if(page==='projects'){ closeProject(); }
+}
+
+function openProject(){
+  document.getElementById('projectsList').classList.add('hidden');
+  document.getElementById('projectDetail').classList.remove('hidden');
+}
+function closeProject(){
+  document.getElementById('projectDetail').classList.add('hidden');
+  document.getElementById('projectsList').classList.remove('hidden');
+}
+function switchDetailTab(btn,id){
+  document.querySelectorAll('#projectDetail .tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.detail-tab').forEach(t=>t.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+function switchSettingsTab(btn,id){
+  document.querySelectorAll('#page-settings .tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.settings-tab').forEach(t=>t.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+
+// ---- permission matrix ----
+const roles = ["Admin","Ban GĐ","PM","Kế toán","Giám sát","NTPhụ"];
+const permMatrix = [
+  ["Xem tất cả dự án",[1,1,0,0,0,0]],
+  ["Tạo / sửa dự án",[1,0,1,0,0,0]],
+  ["Cập nhật tiến độ hạng mục",[1,0,1,0,1,0]],
+  ["Xem dòng tiền dự án",[1,1,1,1,0,0]],
+  ["Tạo phiếu thu / chi",[1,0,1,1,0,0]],
+  ["Duyệt chi (không giới hạn)",[1,1,0,0,0,0]],
+  ["Quản lý người dùng & vai trò",[1,0,0,0,0,0]],
+  ["Xuất báo cáo",[1,1,1,1,0,0]],
+];
+const permBody = document.getElementById('permTableBody');
+permMatrix.forEach(([perm,access])=>{
+  const tr = document.createElement('tr');
+  let html = '<td style="color:var(--text);">'+perm+'</td>';
+  access.forEach(a=>{
+    html += '<td style="text-align:center;">'+(a? '<span style="display:inline-flex;width:22px;height:22px;border-radius:999px;background:rgba(34,197,94,.12);align-items:center;justify-content:center;color:var(--success);">✓</span>' : '<span style="display:inline-flex;width:22px;height:22px;border-radius:999px;background:var(--surface2);align-items:center;justify-content:center;color:var(--muted);">–</span>')+'</td>';
+  });
+  tr.innerHTML = html;
+  permBody.appendChild(tr);
+});
+
+// ---- charts ----
+window.addEventListener('load', function(){
+  const gridColor = '#2A2733';
+  const textColor = '#A1A0AC';
+
+  new Chart(document.getElementById('cashflowChart'), {
+    type:'line',
+    data:{
+      labels:['T2','T3','T4','T5','T6','T7'],
+      datasets:[
+        {label:'Thu', data:[820,940,760,1120,980,1260], borderColor:'#7C3AED', backgroundColor:'rgba(124,58,237,.15)', fill:true, tension:.35},
+        {label:'Chi', data:[540,610,720,690,850,910], borderColor:'#38BDF8', backgroundColor:'rgba(56,189,248,.1)', fill:true, tension:.35},
+      ]
+    },
+    options:{
+      plugins:{legend:{labels:{color:textColor}}},
+      scales:{
+        x:{ticks:{color:textColor}, grid:{color:gridColor}},
+        y:{ticks:{color:textColor}, grid:{color:gridColor}},
+      }
+    }
+  });
+
+  new Chart(document.getElementById('budgetChart'), {
+    type:'bar',
+    data:{
+      labels:['Vật tư','Nhân công','Thiết bị','Chi phí khác'],
+      datasets:[
+        {label:'Ngân sách', data:[18000,12000,7000,3000], backgroundColor:'#6B6975', borderRadius:6},
+        {label:'Thực chi', data:[15400,11800,7600,2100], backgroundColor:'#7C3AED', borderRadius:6},
+      ]
+    },
+    options:{
+      plugins:{legend:{labels:{color:textColor}}},
+      scales:{
+        x:{ticks:{color:textColor}, grid:{display:false}},
+        y:{ticks:{color:textColor}, grid:{color:gridColor}},
+      }
+    }
+  });
+
+  new Chart(document.getElementById('expenseChart'), {
+    type:'doughnut',
+    data:{
+      labels:['Vật tư','Nhân công','Thiết bị','Khác'],
+      datasets:[{data:[15400,11800,7600,2100], backgroundColor:['#7C3AED','#38BDF8','#F59E0B','#6B6975'], borderWidth:0}]
+    },
+    options:{ plugins:{legend:{display:false}}, cutout:'65%' }
+  });
+});
+</script>
+</body>
+</html>

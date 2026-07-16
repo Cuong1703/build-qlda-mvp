@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BUILD QLDA — Ứng dụng (kết nối Supabase)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style>
+  :root{
+    --base:#08070C; --surface:#121018; --surface2:#1A1722; --border:#2A2733;
+    --primary:#7C3AED; --secondary:#4F46E5;
+    --text:#FFFFFF; --text2:#A1A0AC; --muted:#6B6975;
+    --success:#22C55E; --warning:#F59E0B; --danger:#EF4444; --info:#38BDF8;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--base); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;}
+  button{font-family:inherit; cursor:pointer;}
+  input,select{font-family:inherit;}
+  .hidden{display:none !important;}
+  .btn{border:none; border-radius:999px; padding:10px 18px; font-size:13px; font-weight:600;}
+  .btn-primary{background:linear-gradient(135deg,var(--primary),var(--secondary)); color:#fff;}
+  .btn-ghost{background:var(--surface2); border:1px solid var(--border); color:var(--text);}
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:22px; padding:22px;}
+  .badge{display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:5px 11px; font-size:12px; font-weight:600;}
+  .badge-dot{width:6px; height:6px; border-radius:999px;}
+  .b-success{background:rgba(34,197,94,.1); color:var(--success);}
+  .b-warning{background:rgba(245,158,11,.1); color:var(--warning);}
+  .b-danger{background:rgba(239,68,68,.1); color:var(--danger);}
+  .b-muted{background:rgba(107,105,117,.1); color:var(--muted);}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{text-align:left; color:var(--muted); font-weight:500; padding-bottom:10px; border-bottom:1px solid var(--border);}
+  td{padding:12px 0; border-bottom:1px solid var(--border); color:var(--text2);}
+  tr:last-child td{border-bottom:none;}
+  .grid{display:grid; gap:16px;}
+  .g5{grid-template-columns:repeat(5,1fr);}
+  .g4{grid-template-columns:repeat(4,1fr);}
+  .g3{grid-template-columns:repeat(3,1fr);}
+  .g2{grid-template-columns:2fr 1fr;}
+  @media (max-width:1000px){ .g5,.g4,.g3{grid-template-columns:repeat(2,1fr);} .g2{grid-template-columns:1fr;} }
+  @media (max-width:600px){ .g5,.g4,.g3{grid-template-columns:1fr;} }
+  .avatar{border-radius:999px; display:flex; align-items:center; justify-content:center; font-weight:700; color:#fff;
+    background:linear-gradient(135deg,var(--secondary),var(--primary));}
+  #loginView{min-height:100vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;}
+  .orb{position:absolute; border-radius:999px; filter:blur(80px); opacity:.3; pointer-events:none;
+    background:radial-gradient(circle at 30% 30%, var(--primary), var(--secondary) 45%, transparent 70%);
+    top:-160px; left:50%; transform:translateX(-50%); width:420px; height:420px;}
+  .login-box{position:relative; z-index:1; width:100%; max-width:380px; padding:0 20px;}
+  .login-head{text-align:center; margin-bottom:28px;}
+  .login-logo{width:48px; height:48px; border-radius:16px; margin:0 auto 14px; display:flex; align-items:center; justify-content:center;
+    background:linear-gradient(135deg,var(--primary),var(--secondary)); font-weight:800; font-size:18px;}
+  .field{display:flex; flex-direction:column; gap:6px; margin-bottom:14px;}
+  .field label{font-size:12px; color:var(--muted); font-weight:600;}
+  .field input{background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:11px 13px; color:var(--text); font-size:14px; outline:none; width:100%;}
+  .login-box .btn-primary{width:100%; padding:12px; margin-top:6px;}
+  #loginError{color:var(--danger); font-size:12px; margin:-6px 0 10px; min-height:14px;}
+  #appView{display:flex; min-height:100vh;}
+  aside{width:230px; flex-shrink:0; background:var(--surface); border-right:1px solid var(--border);
+    padding:16px; display:flex; flex-direction:column; gap:4px;}
+  .brand{display:flex; align-items:center; gap:8px; padding:10px 8px 20px;}
+  .brand .badge-logo{width:30px; height:30px; border-radius:10px; background:linear-gradient(135deg,var(--primary),var(--secondary));
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:13px;}
+  .brand span{font-size:14px; font-weight:700;}
+  .navitem{display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; border:none; background:transparent;
+    color:var(--text2); font-size:13px; font-weight:600; text-align:left;}
+  .navitem.active{background:rgba(124,58,237,.12); color:var(--text);}
+  .side-user{margin-top:auto; display:flex; align-items:center; gap:10px; background:var(--surface2); border-radius:12px; padding:10px;}
+  .side-user .avatar{width:32px; height:32px; font-size:12px;}
+  .side-user .name{font-size:12px; font-weight:600;}
+  .side-user .role{font-size:11px; color:var(--muted);}
+  main{flex:1; position:relative; overflow-x:hidden;}
+  main .orb{top:-160px; right:-120px; width:380px; height:380px;}
+  header.topbar{position:relative; z-index:1; display:flex; align-items:center; justify-content:space-between;
+    padding:20px 32px; border-bottom:1px solid var(--border);}
+  header.topbar h1{font-size:20px; font-weight:700; margin:0;}
+  .topbar-actions{display:flex; align-items:center; gap:12px;}
+  .icon-btn{width:36px; height:36px; border-radius:999px; background:var(--surface2); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; color:var(--text2); font-size:15px;}
+  .content{position:relative; z-index:1; padding:32px; display:flex; flex-direction:column; gap:24px;}
+  .metric-card{display:flex; flex-direction:column; gap:14px;}
+  .metric-top{display:flex; align-items:center; justify-content:space-between;}
+  .metric-top .label{font-size:13px; color:var(--text2);}
+  .metric-icon{width:34px; height:34px; border-radius:999px; background:rgba(124,58,237,.12); display:flex; align-items:center; justify-content:center;}
+  .metric-value{font-size:28px; font-weight:800;}
+  .metric-sub{font-size:12px; color:var(--muted);}
+  .progress-track{height:6px; border-radius:999px; background:var(--surface2);}
+  .progress-fill{height:6px; border-radius:999px; background:linear-gradient(90deg,var(--primary),var(--secondary));}
+  .tabs{display:inline-flex; gap:4px; background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:4px; width:fit-content;}
+  .tab{border:none; background:transparent; border-radius:999px; padding:9px 16px; font-size:12px; font-weight:600; color:var(--text2);}
+  .tab.active{background:rgba(124,58,237,.12); color:var(--text);}
+  .row-item{display:flex; align-items:center; justify-content:space-between; background:var(--surface2); border-radius:16px; padding:12px 14px; margin-bottom:8px;}
+  .row-item:last-child{margin-bottom:0;}
+  .row-left{display:flex; align-items:center; gap:10px;}
+  .row-left .name{font-size:13px; font-weight:600;}
+  .row-left .sub{font-size:11px; color:var(--muted);}
+  .proj-card{cursor:pointer;}
+  .proj-card:hover{transform:translateY(-3px); transition:transform .15s;}
+  .modal-bg{position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:50;}
+  .modal{width:100%; max-width:400px;}
+  .banner{border-radius:14px; padding:12px 16px; font-size:12px; background:rgba(56,189,248,.1); color:var(--info); border:1px solid rgba(56,189,248,.25);}
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN VIEW ================= -->
+<div id="loginView">
+  <div class="orb"></div>
+  <div class="login-box">
+    <div class="login-head">
+      <div class="login-logo">B</div>
+      <h1 style="font-size:17px; margin:0 0 6px;">Đăng nhập BUILD QLDA</h1>
+      <p style="font-size:13px; color:var(--muted); margin:0;">Kết nối Supabase — dữ liệu thật</p>
+    </div>
+    <div class="card">
+      <div class="field"><label>Email</label><input id="loginEmail" type="email" placeholder="ban@congty.vn"></div>
+      <div class="field"><label>Mật khẩu</label><input id="loginPassword" type="password" placeholder="••••••••"></div>
+      <div id="loginError"></div>
+      <button class="btn btn-primary" onclick="login()">Đăng nhập</button>
+      <button class="btn btn-ghost" style="width:100%; margin-top:8px;" onclick="signUp()">Chưa có tài khoản? Đăng ký</button>
+    </div>
+    <p style="text-align:center; font-size:12px; color:var(--muted); margin-top:16px;" id="configHint"></p>
+  </div>
+</div>
+
+<!-- ================= APP VIEW ================= -->
+<div id="appView" class="hidden">
+  <aside>
+    <div class="brand"><span class="badge-logo">B</span><span>BUILD QLDA</span></div>
+    <button class="navitem active" data-page="dashboard" onclick="goPage('dashboard')">🏠 Tổng quan</button>
+    <button class="navitem" data-page="projects" onclick="goPage('projects')">📁 Dự án</button>
+    <button class="navitem" data-page="cashflow" onclick="goPage('cashflow')">💰 Dòng tiền toàn công ty</button>
+    <div class="side-user" style="margin-top:auto;">
+      <div class="avatar" style="width:32px;height:32px;font-size:12px;" id="userInitial">U</div>
+      <div style="flex:1;"><div class="name" id="userEmail">—</div><div class="role">Đã đăng nhập</div></div>
+      <button class="icon-btn" style="width:28px;height:28px;font-size:12px;" onclick="logout()" title="Đăng xuất">⏻</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="orb"></div>
+    <header class="topbar">
+      <h1 id="pageTitle">Tổng quan</h1>
+      <div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openNewProjectModal()">+ Dự án mới</button>
+      </div>
+    </header>
+
+    <div class="content">
+      <!-- DASHBOARD -->
+      <section id="page-dashboard">
+        <div class="banner" style="margin-bottom:20px;">✅ Dữ liệu dưới đây được đọc trực tiếp từ Supabase — bảng <code>projects</code> &amp; <code>transactions</code>.</div>
+        <div class="grid g4" id="dashMetrics" style="margin-bottom:24px;"></div>
+        <div class="card">
+          <h3 style="margin:0 0 14px; font-size:15px;">Danh sách dự án</h3>
+          <table><thead><tr><th>Dự án</th><th>Chủ đầu tư</th><th>Tiến độ</th><th>Ngân sách</th><th>Trạng thái</th></tr></thead>
+          <tbody id="dashProjectRows"><tr><td colspan="5" style="color:var(--muted);">Đang tải...</td></tr></tbody></table>
+        </div>
+      </section>
+
+      <!-- PROJECTS LIST -->
+      <section id="page-projects" class="hidden">
+        <div id="projectsList">
+          <div class="grid g2" id="projectsGrid" style="grid-template-columns:repeat(2,1fr);"></div>
+        </div>
+        <div id="projectDetail" class="hidden">
+          <button class="btn btn-ghost" style="margin-bottom:16px;" onclick="closeProject()">← Quay lại danh sách dự án</button>
+          <div id="projectDetailHead"></div>
+          <div class="tabs" style="margin:16px 0 20px;">
+            <button class="tab active" onclick="switchDetailTab(this,'d-progress')">Tiến độ</button>
+            <button class="tab" onclick="switchDetailTab(this,'d-cashflow')">Dòng tiền</button>
+          </div>
+          <div id="d-progress" class="detail-tab">
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; margin-bottom:14px;">
+                <h3 style="margin:0; font-size:15px;">Hạng mục công việc (WBS)</h3>
+                <button class="btn btn-ghost" style="padding:7px 14px; font-size:12px;" onclick="openNewWbsModal()">+ Thêm hạng mục</button>
+              </div>
+              <div id="wbsList"></div>
+            </div>
+          </div>
+          <div id="d-cashflow" class="detail-tab hidden">
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; margin-bottom:14px;">
+                <h3 style="margin:0; font-size:15px;">Giao dịch thu / chi</h3>
+                <button class="btn btn-ghost" style="padding:7px 14px; font-size:12px;" onclick="openNewTxnModal()">+ Tạo phiếu</button>
+              </div>
+              <table><thead><tr><th>Loại</th><th>Nội dung</th><th>Ngày</th><th style="text-align:right;">Số tiền</th><th>Trạng thái</th></tr></thead>
+              <tbody id="txnRows"></tbody></table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- COMPANY CASHFLOW -->
+      <section id="page-cashflow" class="hidden">
+        <div class="grid g3" id="cfMetrics" style="margin-bottom:20px;"></div>
+        <div class="card">
+          <h3 style="margin:0 0 14px; font-size:15px;">Tất cả giao dịch (mọi dự án)</h3>
+          <table><thead><tr><th>Dự án</th><th>Loại</th><th>Nội dung</th><th>Ngày</th><th style="text-align:right;">Số tiền</th><th>Trạng thái</th></tr></thead>
+          <tbody id="allTxnRows"><tr><td colspan="6" style="color:var(--muted);">Đang tải...</td></tr></tbody></table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- ================= MODALS ================= -->
+<div id="modalNewProject" class="modal-bg hidden">
+  <div class="card modal">
+    <h3 style="margin:0 0 16px; font-size:15px;">Tạo dự án mới</h3>
+    <div class="field"><label>Tên dự án</label><input id="npName"></div>
+    <div class="field"><label>Chủ đầu tư</label><input id="npInvestor"></div>
+    <div class="field"><label>Tổng ngân sách (triệu)</label><input id="npBudget" type="number"></div>
+    <div style="display:flex; gap:8px; margin-top:6px;">
+      <button class="btn btn-ghost" style="flex:1;" onclick="closeModal('modalNewProject')">Hủy</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="createProject()">Tạo dự án</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalNewWbs" class="modal-bg hidden">
+  <div class="card modal">
+    <h3 style="margin:0 0 16px; font-size:15px;">Thêm hạng mục công việc</h3>
+    <div class="field"><label>Tên hạng mục</label><input id="nwName"></div>
+    <div class="field"><label>% kế hoạch</label><input id="nwPlanned" type="number" value="100"></div>
+    <div class="field"><label>% thực tế</label><input id="nwActual" type="number" value="0"></div>
+    <div style="display:flex; gap:8px; margin-top:6px;">
+      <button class="btn btn-ghost" style="flex:1;" onclick="closeModal('modalNewWbs')">Hủy</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="createWbs()">Thêm</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalNewTxn" class="modal-bg hidden">
+  <div class="card modal">
+    <h3 style="margin:0 0 16px; font-size:15px;">Tạo phiếu thu / chi</h3>
+    <div class="field"><label>Loại</label>
+      <select id="ntType" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:11px 13px; color:var(--text);">
+        <option value="chi">Phiếu chi</option><option value="thu">Phiếu thu</option>
+      </select>
+    </div>
+    <div class="field"><label>Nội dung</label><input id="ntDesc"></div>
+    <div class="field"><label>Số tiền (triệu)</label><input id="ntAmount" type="number"></div>
+    <div style="display:flex; gap:8px; margin-top:6px;">
+      <button class="btn btn-ghost" style="flex:1;" onclick="closeModal('modalNewTxn')">Hủy</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="createTxn()">Tạo phiếu</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let sb = null;
+let currentProjectId = null;
+const fmt = (n) => Number(n||0).toLocaleString("vi-VN");
+
+// ---- init & config check ----
+window.addEventListener('load', () => {
+  if (!window.SUPABASE_URL || SUPABASE_URL.includes("xxxxxxxxxxxx")) {
+    document.getElementById('configHint').innerHTML =
+      '⚠️ Chưa cấu hình Supabase. Mở file <b>config.js</b> và điền SUPABASE_URL / SUPABASE_ANON_KEY.';
+    return;
+  }
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  sb.auth.getSession().then(({data}) => {
+    if (data.session) showApp(data.session);
+  });
+});
+
+async function signUp(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if(!sb) return;
+  const { error } = await sb.auth.signUp({ email, password });
+  document.getElementById('loginError').textContent = error ? error.message : 'Đã gửi email xác nhận — kiểm tra hộp thư rồi đăng nhập lại.';
+}
+
+async function login(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if(!sb){ document.getElementById('loginError').textContent = 'Chưa cấu hình Supabase trong config.js'; return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ document.getElementById('loginError').textContent = error.message; return; }
+  showApp(data.session);
+}
+
+async function logout(){
+  await sb.auth.signOut();
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById('loginView').classList.remove('hidden');
+}
+
+function showApp(session){
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('appView').classList.remove('hidden');
+  document.getElementById('userEmail').textContent = session.user.email;
+  document.getElementById('userInitial').textContent = session.user.email[0].toUpperCase();
+  loadDashboard();
+  loadProjectsGrid();
+}
+
+function goPage(page){
+  document.querySelectorAll('main .content > section').forEach(s=>s.classList.add('hidden'));
+  document.getElementById('page-'+page).classList.remove('hidden');
+  document.querySelectorAll('.navitem').forEach(n=>n.classList.remove('active'));
+  document.querySelector('.navitem[data-page="'+page+'"]').classList.add('active');
+  document.getElementById('pageTitle').textContent = {dashboard:"Tổng quan", projects:"Dự án", cashflow:"Dòng tiền toàn công ty"}[page];
+  if(page==='projects') closeProject();
+  if(page==='cashflow') loadCompanyCashflow();
+}
+
+function statusBadge(status){
+  const map = { on_track:['Đúng tiến độ','b-success','var(--success)'], warning:['Sắp trễ','b-warning','var(--warning)'],
+    danger:['Vượt ngân sách','b-danger','var(--danger)'], da_duyet:['Đã duyệt','b-success','var(--success)'],
+    cho_duyet:['Chờ duyệt','b-warning','var(--warning)'], tu_choi:['Từ chối','b-danger','var(--danger)'] };
+  const [label,cls,dot] = map[status] || [status,'b-muted','var(--muted)'];
+  return `<span class="badge ${cls}"><span class="badge-dot" style="background:${dot};"></span>${label}</span>`;
+}
+
+// ---- DASHBOARD ----
+async function loadDashboard(){
+  const { data: projects, error } = await sb.from('projects').select('*').order('created_at');
+  if(error){ console.error(error); return; }
+  const total = projects.length;
+  const budget = projects.reduce((a,p)=>a+Number(p.total_budget||0),0);
+  const avgProgress = total ? Math.round(projects.reduce((a,p)=>a+Number(p.progress_percent||0),0)/total) : 0;
+  const attention = projects.filter(p=>p.status!=='on_track').length;
+
+  document.getElementById('dashMetrics').innerHTML = `
+    <div class="card metric-card"><div class="metric-top"><span class="label">Dự án đang quản lý</span><div class="metric-icon">🏢</div></div><div class="metric-value">${total}</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">Tổng ngân sách</span><div class="metric-icon">💼</div></div><div class="metric-value">${fmt(budget)} triệu</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">Tiến độ trung bình</span><div class="metric-icon">📐</div></div><div class="metric-value">${avgProgress}%</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">Dự án cần chú ý</span><div class="metric-icon">⚠️</div></div><div class="metric-value">${attention}</div></div>
+  `;
+
+  document.getElementById('dashProjectRows').innerHTML = projects.length ? projects.map(p=>`
+    <tr><td style="color:var(--text); font-weight:600;">${p.name}</td><td>${p.investor||'—'}</td><td>${p.progress_percent}%</td>
+    <td>${fmt(p.total_budget)} triệu</td><td>${statusBadge(p.status)}</td></tr>
+  `).join('') : `<tr><td colspan="5" style="color:var(--muted);">Chưa có dự án — nhấn "+ Dự án mới" để tạo.</td></tr>`;
+}
+
+// ---- PROJECTS ----
+async function loadProjectsGrid(){
+  const { data: projects, error } = await sb.from('projects').select('*').order('created_at');
+  if(error){ console.error(error); return; }
+  document.getElementById('projectsGrid').innerHTML = projects.map(p=>`
+    <div class="card proj-card" onclick="openProject('${p.id}')">
+      <div style="display:flex; justify-content:space-between;">
+        <div><h4 style="margin:0; font-size:15px;">${p.name}</h4><p style="margin:4px 0 0; font-size:12px; color:var(--muted);">${p.investor||'—'}</p></div>
+        ${statusBadge(p.status)}
+      </div>
+      <div class="progress-track" style="margin-top:16px;"><div class="progress-fill" style="width:${p.progress_percent}%;"></div></div>
+      <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:var(--muted);">
+        <span>Ngân sách: ${fmt(p.total_budget)} triệu</span><span style="color:var(--primary); font-weight:600;">Xem chi tiết →</span>
+      </div>
+    </div>
+  `).join('') || `<p style="color:var(--muted);">Chưa có dự án nào.</p>`;
+}
+
+async function openProject(id){
+  currentProjectId = id;
+  const { data: p } = await sb.from('projects').select('*').eq('id', id).single();
+  document.getElementById('projectDetailHead').innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <div><h2 style="margin:0; font-size:19px;">${p.name}</h2><p style="margin:4px 0 0; font-size:13px; color:var(--muted);">${p.investor||''} · Ngân sách ${fmt(p.total_budget)} triệu</p></div>
+      ${statusBadge(p.status)}
+    </div>`;
+  document.getElementById('projectsList').classList.add('hidden');
+  document.getElementById('projectDetail').classList.remove('hidden');
+  loadWbs(id);
+  loadTxns(id);
+}
+function closeProject(){
+  document.getElementById('projectDetail').classList.add('hidden');
+  document.getElementById('projectsList').classList.remove('hidden');
+  currentProjectId = null;
+}
+function switchDetailTab(btn,id){
+  document.querySelectorAll('#projectDetail .tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.detail-tab').forEach(t=>t.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+
+async function loadWbs(projectId){
+  const { data, error } = await sb.from('wbs_items').select('*').eq('project_id', projectId).order('sort_order');
+  if(error){ console.error(error); return; }
+  document.getElementById('wbsList').innerHTML = data.length ? data.map(w=>`
+    <div style="margin-bottom:16px;">
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;">
+        <span>${w.name}</span><span style="color:${w.actual_percent < w.planned_percent-10 ? 'var(--danger)':'var(--text2)'};">${w.actual_percent}% / ${w.planned_percent}%</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill" style="width:${w.actual_percent}%; ${w.actual_percent < w.planned_percent-10 ? 'background:linear-gradient(90deg,var(--danger),var(--warning));':''}"></div></div>
+    </div>
+  `).join('') : `<p style="color:var(--muted); font-size:13px;">Chưa có hạng mục nào.</p>`;
+}
+
+async function loadTxns(projectId){
+  const { data, error } = await sb.from('transactions').select('*').eq('project_id', projectId).order('txn_date', {ascending:false});
+  if(error){ console.error(error); return; }
+  document.getElementById('txnRows').innerHTML = data.length ? data.map(t=>`
+    <tr><td>${t.type==='thu'?'Thu':'Chi'}</td><td style="color:var(--text);">${t.description||t.category||''}</td><td>${t.txn_date}</td>
+    <td style="text-align:right; ${t.type==='thu'?'color:var(--success); font-weight:600;':''}">${t.type==='thu'?'+':'-'}${fmt(t.amount)}</td>
+    <td>${statusBadge(t.status)}</td></tr>
+  `).join('') : `<tr><td colspan="5" style="color:var(--muted);">Chưa có giao dịch nào.</td></tr>`;
+}
+
+// ---- COMPANY-WIDE CASHFLOW ----
+async function loadCompanyCashflow(){
+  const { data, error } = await sb.from('transactions').select('*, projects(name)').order('txn_date', {ascending:false});
+  if(error){ console.error(error); return; }
+  const thu = data.filter(t=>t.type==='thu').reduce((a,t)=>a+Number(t.amount),0);
+  const chi = data.filter(t=>t.type==='chi').reduce((a,t)=>a+Number(t.amount),0);
+  document.getElementById('cfMetrics').innerHTML = `
+    <div class="card metric-card"><div class="metric-top"><span class="label">Tổng thu</span><div class="metric-icon">📈</div></div><div class="metric-value" style="color:var(--success);">${fmt(thu)} triệu</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">Tổng chi</span><div class="metric-icon">📉</div></div><div class="metric-value">${fmt(chi)} triệu</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">Chênh lệch</span><div class="metric-icon">⚖️</div></div><div class="metric-value">${fmt(thu-chi)} triệu</div></div>
+  `;
+  document.getElementById('allTxnRows').innerHTML = data.length ? data.map(t=>`
+    <tr><td style="color:var(--text);">${t.projects?.name||'—'}</td><td>${t.type==='thu'?'Thu':'Chi'}</td><td>${t.description||t.category||''}</td><td>${t.txn_date}</td>
+    <td style="text-align:right; ${t.type==='thu'?'color:var(--success); font-weight:600;':''}">${t.type==='thu'?'+':'-'}${fmt(t.amount)}</td>
+    <td>${statusBadge(t.status)}</td></tr>
+  `).join('') : `<tr><td colspan="6" style="color:var(--muted);">Chưa có giao dịch nào.</td></tr>`;
+}
+
+// ---- MODALS / CREATE ----
+function openModal(id){ document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
+function openNewProjectModal(){ openModal('modalNewProject'); }
+function openNewWbsModal(){ openModal('modalNewWbs'); }
+function openNewTxnModal(){ openModal('modalNewTxn'); }
+
+async function createProject(){
+  const name = document.getElementById('npName').value.trim();
+  const investor = document.getElementById('npInvestor').value.trim();
+  const budget = Number(document.getElementById('npBudget').value || 0);
+  if(!name) return;
+  const { error } = await sb.from('projects').insert({ name, investor, total_budget: budget, status:'on_track', progress_percent:0 });
+  if(error){ alert(error.message); return; }
+  closeModal('modalNewProject');
+  document.getElementById('npName').value=''; document.getElementById('npInvestor').value=''; document.getElementById('npBudget').value='';
+  loadDashboard(); loadProjectsGrid();
+}
+
+async function createWbs(){
+  const name = document.getElementById('nwName').value.trim();
+  const planned = Number(document.getElementById('nwPlanned').value || 0);
+  const actual = Number(document.getElementById('nwActual').value || 0);
+  if(!name || !currentProjectId) return;
+  const { error } = await sb.from('wbs_items').insert({ project_id: currentProjectId, name, planned_percent: planned, actual_percent: actual });
+  if(error){ alert(error.message); return; }
+  closeModal('modalNewWbs');
+  document.getElementById('nwName').value='';
+  loadWbs(currentProjectId);
+}
+
+async function createTxn(){
+  const type = document.getElementById('ntType').value;
+  const description = document.getElementById('ntDesc').value.trim();
+  const amount = Number(document.getElementById('ntAmount').value || 0);
+  if(!description || !amount || !currentProjectId) return;
+  const { error } = await sb.from('transactions').insert({ project_id: currentProjectId, type, description, amount, status:'cho_duyet' });
+  if(error){ alert(error.message); return; }
+  closeModal('modalNewTxn');
+  document.getElementById('ntDesc').value=''; document.getElementById('ntAmount').value='';
+  loadTxns(currentProjectId);
+}
+</script>
+</body>
+</html>
