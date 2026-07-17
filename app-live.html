@@ -235,11 +235,25 @@
   <div class="card modal">
     <h3 style="margin:0 0 16px; font-size:15px;" id="wbsModalTitle">Thêm hạng mục công việc</h3>
     <div class="field"><label id="wbsNameLabel">Tên hạng mục</label><input id="nwName"></div>
-    <div class="field"><label>% kế hoạch</label><input id="nwPlanned" type="number" value="100"></div>
-    <div class="field"><label>% thực tế</label><input id="nwActual" type="number" value="0"></div>
+    <div class="field"><label>Người phụ trách</label><input id="nwAssignee" placeholder="VD: Trần Minh"></div>
+    <div style="display:flex; gap:10px;">
+      <div class="field" style="flex:1;"><label>Ngày bắt đầu</label><input id="nwStart" type="date"></div>
+      <div class="field" style="flex:1;"><label>Ngày kết thúc</label><input id="nwEnd" type="date"></div>
+    </div>
+    <div class="field"><label>Trạng thái</label>
+      <select id="nwStatus" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:11px 13px; color:var(--text);">
+        <option value="chua_lam">Chưa làm</option>
+        <option value="dang_lam">Đang làm</option>
+        <option value="hoan_thanh">Hoàn thành</option>
+      </select>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <div class="field" style="flex:1;"><label>% kế hoạch</label><input id="nwPlanned" type="number" value="100"></div>
+      <div class="field" style="flex:1;"><label>% thực tế</label><input id="nwActual" type="number" value="0"></div>
+    </div>
     <div style="display:flex; gap:8px; margin-top:6px;">
       <button class="btn btn-ghost" style="flex:1;" onclick="closeModal('modalNewWbs')">Hủy</button>
-      <button class="btn btn-primary" style="flex:1;" onclick="createWbs()">Thêm</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="createWbs()">Lưu</button>
     </div>
   </div>
 </div>
@@ -398,6 +412,18 @@ function switchDetailTab(btn,id){
   document.getElementById(id).classList.remove('hidden');
 }
 
+function wbsStatusBadge(status){
+  const map = { chua_lam:['Chưa làm','b-muted','var(--muted)'], dang_lam:['Đang làm','b-warning','var(--warning)'], hoan_thanh:['Hoàn thành','b-success','var(--success)'] };
+  const [label,cls,dot] = map[status] || map['chua_lam'];
+  return `<span class="badge ${cls}" style="font-size:11px; padding:3px 9px;"><span class="badge-dot" style="background:${dot};"></span>${label}</span>`;
+}
+function wbsMeta(w){
+  const parts = [];
+  if(w.assignee) parts.push(`👤 ${w.assignee}`);
+  if(w.start_date || w.end_date) parts.push(`🗓 ${w.start_date||'?'} → ${w.end_date||'?'}`);
+  return parts.length ? `<div style="font-size:11px; color:var(--muted); margin-top:3px;">${parts.join(' · ')}</div>` : '';
+}
+
 async function loadWbs(projectId){
   const { data, error } = await sb.from('wbs_items').select('*').eq('project_id', projectId).order('sort_order');
   if(error){ console.error(error); return; }
@@ -406,30 +432,43 @@ async function loadWbs(projectId){
 
   document.getElementById('wbsList').innerHTML = roots.length ? roots.map(w=>{
     const children = childrenOf(w.id);
-    const planned = children.length ? Math.round(children.reduce((a,c)=>a+Number(c.planned_percent),0)/children.length) : w.planned_percent;
-    const actual  = children.length ? Math.round(children.reduce((a,c)=>a+Number(c.actual_percent),0)/children.length) : w.actual_percent;
+    const hasChildren = children.length > 0;
+    const planned = hasChildren ? Math.round(children.reduce((a,c)=>a+Number(c.planned_percent),0)/children.length) : w.planned_percent;
+    const actual  = hasChildren ? Math.round(children.reduce((a,c)=>a+Number(c.actual_percent),0)/children.length) : w.actual_percent;
     const late = actual < planned - 10;
     return `
     <div style="margin-bottom:18px; padding-bottom:18px; border-bottom:1px solid var(--border);">
-      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; font-size:13px; margin-bottom:6px;">
         <span style="font-weight:600;">
-          ${children.length ? `<button onclick="toggleWbsChildren('${w.id}')" style="background:none;border:none;color:var(--text2);margin-right:4px;" id="toggle-${w.id}">▸</button>` : ''}
-          ${w.name} ${children.length ? `<span style="color:var(--muted); font-weight:400;">(${children.length} đầu việc con)</span>` : ''}
+          ${hasChildren ? `<button onclick="toggleWbsChildren('${w.id}')" style="background:none;border:none;color:var(--text2);margin-right:4px;" id="toggle-${w.id}">▸</button>` : ''}
+          ${w.name} ${hasChildren ? `<span style="color:var(--muted); font-weight:400;">(${children.length} đầu việc con)</span>` : ''}
+          ${!hasChildren ? wbsStatusBadge(w.status) : ''}
+          ${!hasChildren ? wbsMeta(w) : ''}
         </span>
-        <span style="display:flex; align-items:center; gap:10px;">
-          <span style="color:${late ? 'var(--danger)':'var(--text2)'};">${actual}% / ${planned}%</span>
+        <span style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+          ${hasChildren
+            ? `<span style="color:${late?'var(--danger)':'var(--text2)'};">${actual}% / ${planned}%</span>`
+            : `<input type="number" value="${w.actual_percent}" onchange="quickUpdateWbs('${w.id}','actual_percent',this.value)" style="width:52px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:4px 6px; color:var(--text); font-size:12px;"> % / ${w.planned_percent}%`
+          }
+          <button onclick="openNewWbsModal(null,'${w.id}')" style="background:none;border:none;color:var(--muted);" title="Sửa">✏️</button>
           <button onclick="deleteWbs('${w.id}')" style="background:none; border:none; color:var(--muted);" title="Xóa hạng mục">🗑</button>
         </span>
       </div>
       <div class="progress-track"><div class="progress-fill" style="width:${actual}%; ${late ? 'background:linear-gradient(90deg,var(--danger),var(--warning));':''}"></div></div>
 
-      <div id="children-${w.id}" class="hidden" style="margin-top:12px; margin-left:20px; display:flex; flex-direction:column; gap:10px;">
+      <div id="children-${w.id}" class="hidden" style="margin-top:12px; margin-left:20px; display:flex; flex-direction:column; gap:12px;">
         ${children.map(c=>`
           <div>
-            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
-              <span>${c.name}</span>
-              <span style="display:flex; align-items:center; gap:8px;">
-                <span style="color:${c.actual_percent < c.planned_percent-10 ? 'var(--danger)':'var(--text2)'};">${c.actual_percent}% / ${c.planned_percent}%</span>
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; font-size:12px; margin-bottom:4px;">
+              <span>${c.name} ${wbsStatusBadge(c.status)}${wbsMeta(c)}</span>
+              <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
+                <select onchange="quickUpdateWbsStatus('${c.id}', this.value)" style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:11px; padding:3px 4px;">
+                  <option value="chua_lam" ${c.status==='chua_lam'?'selected':''}>Chưa làm</option>
+                  <option value="dang_lam" ${c.status==='dang_lam'?'selected':''}>Đang làm</option>
+                  <option value="hoan_thanh" ${c.status==='hoan_thanh'?'selected':''}>Hoàn thành</option>
+                </select>
+                <input type="number" value="${c.actual_percent}" onchange="quickUpdateWbs('${c.id}','actual_percent',this.value)" style="width:46px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:3px 5px; color:var(--text); font-size:11px;">%
+                <button onclick="openNewWbsModal(null,'${c.id}')" style="background:none;border:none;color:var(--muted); font-size:12px;" title="Sửa">✏️</button>
                 <button onclick="deleteWbs('${c.id}')" style="background:none; border:none; color:var(--muted); font-size:12px;" title="Xóa">🗑</button>
               </span>
             </div>
@@ -483,10 +522,34 @@ function openModal(id){ document.getElementById(id).classList.remove('hidden'); 
 function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
 function openNewProjectModal(){ openModal('modalNewProject'); }
 let pendingWbsParentId = null;
-function openNewWbsModal(parentId){
+let editingWbsId = null;
+
+async function openNewWbsModal(parentId, editId){
   pendingWbsParentId = parentId || null;
-  document.getElementById('wbsModalTitle').textContent = pendingWbsParentId ? 'Thêm đầu việc con' : 'Thêm hạng mục công việc';
-  document.getElementById('wbsNameLabel').textContent = pendingWbsParentId ? 'Tên đầu việc con' : 'Tên hạng mục';
+  editingWbsId = editId || null;
+
+  document.getElementById('nwName').value = '';
+  document.getElementById('nwAssignee').value = '';
+  document.getElementById('nwStart').value = '';
+  document.getElementById('nwEnd').value = '';
+  document.getElementById('nwStatus').value = 'chua_lam';
+  document.getElementById('nwPlanned').value = 100;
+  document.getElementById('nwActual').value = 0;
+
+  if(editingWbsId){
+    const { data: w } = await sb.from('wbs_items').select('*').eq('id', editingWbsId).single();
+    document.getElementById('nwName').value = w.name || '';
+    document.getElementById('nwAssignee').value = w.assignee || '';
+    document.getElementById('nwStart').value = w.start_date || '';
+    document.getElementById('nwEnd').value = w.end_date || '';
+    document.getElementById('nwStatus').value = w.status || 'chua_lam';
+    document.getElementById('nwPlanned').value = w.planned_percent;
+    document.getElementById('nwActual').value = w.actual_percent;
+    document.getElementById('wbsModalTitle').textContent = 'Sửa công việc';
+  } else {
+    document.getElementById('wbsModalTitle').textContent = pendingWbsParentId ? 'Thêm đầu việc con' : 'Thêm hạng mục công việc';
+  }
+  document.getElementById('wbsNameLabel').textContent = pendingWbsParentId || editingWbsId ? 'Tên công việc' : 'Tên hạng mục';
   openModal('modalNewWbs');
 }
 function openNewTxnModal(){ openModal('modalNewTxn'); }
@@ -505,17 +568,44 @@ async function createProject(){
 
 async function createWbs(){
   const name = document.getElementById('nwName').value.trim();
+  const assignee = document.getElementById('nwAssignee').value.trim();
+  const start_date = document.getElementById('nwStart').value || null;
+  const end_date = document.getElementById('nwEnd').value || null;
+  const status = document.getElementById('nwStatus').value;
   const planned = Number(document.getElementById('nwPlanned').value || 0);
   const actual = Number(document.getElementById('nwActual').value || 0);
   if(!name || !currentProjectId) return;
-  const { error } = await sb.from('wbs_items').insert({
-    project_id: currentProjectId, parent_id: pendingWbsParentId, name,
-    planned_percent: planned, actual_percent: actual
-  });
+
+  let error;
+  if(editingWbsId){
+    ({ error } = await sb.from('wbs_items').update({
+      name, assignee, start_date, end_date, status, planned_percent: planned, actual_percent: actual
+    }).eq('id', editingWbsId));
+  } else {
+    ({ error } = await sb.from('wbs_items').insert({
+      project_id: currentProjectId, parent_id: pendingWbsParentId, name, assignee, start_date, end_date, status,
+      planned_percent: planned, actual_percent: actual
+    }));
+  }
   if(error){ alert(error.message); return; }
   closeModal('modalNewWbs');
-  document.getElementById('nwName').value='';
-  pendingWbsParentId = null;
+  pendingWbsParentId = null; editingWbsId = null;
+  loadWbs(currentProjectId);
+}
+
+// Sửa % thực tế nhanh trực tiếp trên danh sách
+async function quickUpdateWbs(id, field, value){
+  const payload = {};
+  payload[field] = Number(value) || 0;
+  const { error } = await sb.from('wbs_items').update(payload).eq('id', id);
+  if(error){ alert(error.message); return; }
+  loadWbs(currentProjectId);
+}
+
+// Đổi trạng thái nhanh
+async function quickUpdateWbsStatus(id, value){
+  const { error } = await sb.from('wbs_items').update({ status: value }).eq('id', id);
+  if(error){ alert(error.message); return; }
   loadWbs(currentProjectId);
 }
 
