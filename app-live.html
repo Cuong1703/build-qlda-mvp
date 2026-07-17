@@ -233,8 +233,8 @@
 
 <div id="modalNewWbs" class="modal-bg hidden">
   <div class="card modal">
-    <h3 style="margin:0 0 16px; font-size:15px;">Thêm hạng mục công việc</h3>
-    <div class="field"><label>Tên hạng mục</label><input id="nwName"></div>
+    <h3 style="margin:0 0 16px; font-size:15px;" id="wbsModalTitle">Thêm hạng mục công việc</h3>
+    <div class="field"><label id="wbsNameLabel">Tên hạng mục</label><input id="nwName"></div>
     <div class="field"><label>% kế hoạch</label><input id="nwPlanned" type="number" value="100"></div>
     <div class="field"><label>% thực tế</label><input id="nwActual" type="number" value="0"></div>
     <div style="display:flex; gap:8px; margin-top:6px;">
@@ -401,18 +401,52 @@ function switchDetailTab(btn,id){
 async function loadWbs(projectId){
   const { data, error } = await sb.from('wbs_items').select('*').eq('project_id', projectId).order('sort_order');
   if(error){ console.error(error); return; }
-  document.getElementById('wbsList').innerHTML = data.length ? data.map(w=>`
-    <div style="margin-bottom:16px;">
+  const roots = data.filter(w => !w.parent_id);
+  const childrenOf = (id) => data.filter(w => w.parent_id === id);
+
+  document.getElementById('wbsList').innerHTML = roots.length ? roots.map(w=>{
+    const children = childrenOf(w.id);
+    const planned = children.length ? Math.round(children.reduce((a,c)=>a+Number(c.planned_percent),0)/children.length) : w.planned_percent;
+    const actual  = children.length ? Math.round(children.reduce((a,c)=>a+Number(c.actual_percent),0)/children.length) : w.actual_percent;
+    const late = actual < planned - 10;
+    return `
+    <div style="margin-bottom:18px; padding-bottom:18px; border-bottom:1px solid var(--border);">
       <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;">
-        <span>${w.name}</span>
+        <span style="font-weight:600;">
+          ${children.length ? `<button onclick="toggleWbsChildren('${w.id}')" style="background:none;border:none;color:var(--text2);margin-right:4px;" id="toggle-${w.id}">▸</button>` : ''}
+          ${w.name} ${children.length ? `<span style="color:var(--muted); font-weight:400;">(${children.length} đầu việc con)</span>` : ''}
+        </span>
         <span style="display:flex; align-items:center; gap:10px;">
-          <span style="color:${w.actual_percent < w.planned_percent-10 ? 'var(--danger)':'var(--text2)'};">${w.actual_percent}% / ${w.planned_percent}%</span>
-          <button onclick="deleteWbs('${w.id}')" style="background:none; border:none; color:var(--muted); font-size:13px;" title="Xóa hạng mục">🗑</button>
+          <span style="color:${late ? 'var(--danger)':'var(--text2)'};">${actual}% / ${planned}%</span>
+          <button onclick="deleteWbs('${w.id}')" style="background:none; border:none; color:var(--muted);" title="Xóa hạng mục">🗑</button>
         </span>
       </div>
-      <div class="progress-track"><div class="progress-fill" style="width:${w.actual_percent}%; ${w.actual_percent < w.planned_percent-10 ? 'background:linear-gradient(90deg,var(--danger),var(--warning));':''}"></div></div>
+      <div class="progress-track"><div class="progress-fill" style="width:${actual}%; ${late ? 'background:linear-gradient(90deg,var(--danger),var(--warning));':''}"></div></div>
+
+      <div id="children-${w.id}" class="hidden" style="margin-top:12px; margin-left:20px; display:flex; flex-direction:column; gap:10px;">
+        ${children.map(c=>`
+          <div>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+              <span>${c.name}</span>
+              <span style="display:flex; align-items:center; gap:8px;">
+                <span style="color:${c.actual_percent < c.planned_percent-10 ? 'var(--danger)':'var(--text2)'};">${c.actual_percent}% / ${c.planned_percent}%</span>
+                <button onclick="deleteWbs('${c.id}')" style="background:none; border:none; color:var(--muted); font-size:12px;" title="Xóa">🗑</button>
+              </span>
+            </div>
+            <div class="progress-track" style="height:4px;"><div class="progress-fill" style="height:4px; width:${c.actual_percent}%;"></div></div>
+          </div>
+        `).join('')}
+        <button class="btn btn-ghost" style="font-size:11px; padding:6px 12px; width:fit-content;" onclick="openNewWbsModal('${w.id}')">+ Thêm đầu việc con</button>
+      </div>
     </div>
-  `).join('') : `<p style="color:var(--muted); font-size:13px;">Chưa có hạng mục nào.</p>`;
+  `;}).join('') : `<p style="color:var(--muted); font-size:13px;">Chưa có hạng mục nào.</p>`;
+}
+
+function toggleWbsChildren(parentId){
+  const box = document.getElementById('children-'+parentId);
+  const btn = document.getElementById('toggle-'+parentId);
+  box.classList.toggle('hidden');
+  if(btn) btn.textContent = box.classList.contains('hidden') ? '▸' : '▾';
 }
 
 async function loadTxns(projectId){
@@ -448,7 +482,13 @@ async function loadCompanyCashflow(){
 function openModal(id){ document.getElementById(id).classList.remove('hidden'); }
 function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
 function openNewProjectModal(){ openModal('modalNewProject'); }
-function openNewWbsModal(){ openModal('modalNewWbs'); }
+let pendingWbsParentId = null;
+function openNewWbsModal(parentId){
+  pendingWbsParentId = parentId || null;
+  document.getElementById('wbsModalTitle').textContent = pendingWbsParentId ? 'Thêm đầu việc con' : 'Thêm hạng mục công việc';
+  document.getElementById('wbsNameLabel').textContent = pendingWbsParentId ? 'Tên đầu việc con' : 'Tên hạng mục';
+  openModal('modalNewWbs');
+}
 function openNewTxnModal(){ openModal('modalNewTxn'); }
 
 async function createProject(){
@@ -468,10 +508,14 @@ async function createWbs(){
   const planned = Number(document.getElementById('nwPlanned').value || 0);
   const actual = Number(document.getElementById('nwActual').value || 0);
   if(!name || !currentProjectId) return;
-  const { error } = await sb.from('wbs_items').insert({ project_id: currentProjectId, name, planned_percent: planned, actual_percent: actual });
+  const { error } = await sb.from('wbs_items').insert({
+    project_id: currentProjectId, parent_id: pendingWbsParentId, name,
+    planned_percent: planned, actual_percent: actual
+  });
   if(error){ alert(error.message); return; }
   closeModal('modalNewWbs');
   document.getElementById('nwName').value='';
+  pendingWbsParentId = null;
   loadWbs(currentProjectId);
 }
 
