@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BUILD QLDA — Ứng dụng (kết nối Supabase)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
 <style>
@@ -131,6 +132,7 @@
     <button class="navitem active" data-page="dashboard" onclick="goPage('dashboard')">🏠 Tổng quan</button>
     <button class="navitem" data-page="projects" onclick="goPage('projects')">📁 Dự án</button>
     <button class="navitem" data-page="cashflow" onclick="goPage('cashflow')">💰 Dòng tiền toàn công ty</button>
+    <button class="navitem" data-page="reports" onclick="goPage('reports')">📄 Báo cáo</button>
     <div class="side-user" style="margin-top:auto;">
       <div class="avatar" style="width:32px;height:32px;font-size:12px;" id="userInitial">U</div>
       <div style="flex:1;"><div class="name" id="userEmail">—</div><div class="role">Đã đăng nhập</div></div>
@@ -186,7 +188,7 @@
                 <h3 style="margin:0; font-size:15px;">Giao dịch thu / chi</h3>
                 <button class="btn btn-ghost" style="padding:7px 14px; font-size:12px;" onclick="openNewTxnModal()">+ Tạo phiếu</button>
               </div>
-              <table><thead><tr><th>Loại</th><th>Nội dung</th><th>Ngày</th><th style="text-align:right;">Số tiền</th><th>Trạng thái</th></tr></thead>
+              <table><thead><tr><th>Loại</th><th>Nội dung</th><th>Ngày</th><th style="text-align:right;">Số tiền</th><th>Trạng thái</th><th></th></tr></thead>
               <tbody id="txnRows"></tbody></table>
             </div>
           </div>
@@ -200,6 +202,15 @@
           <h3 style="margin:0 0 14px; font-size:15px;">Tất cả giao dịch (mọi dự án)</h3>
           <table><thead><tr><th>Dự án</th><th>Loại</th><th>Nội dung</th><th>Ngày</th><th style="text-align:right;">Số tiền</th><th>Trạng thái</th></tr></thead>
           <tbody id="allTxnRows"><tr><td colspan="6" style="color:var(--muted);">Đang tải...</td></tr></tbody></table>
+        </div>
+      </section>
+
+      <!-- REPORTS -->
+      <section id="page-reports" class="hidden">
+        <div class="banner" style="margin-bottom:20px;">📄 Xuất báo cáo tiến độ &amp; dòng tiền theo từng dự án, dựa trên dữ liệu thật trong Supabase.</div>
+        <div class="card">
+          <h3 style="margin:0 0 14px; font-size:15px;">Chọn dự án để xuất báo cáo</h3>
+          <div id="reportsList"><p style="color:var(--muted);">Đang tải...</p></div>
         </div>
       </section>
     </div>
@@ -305,9 +316,10 @@ function goPage(page){
   document.getElementById('page-'+page).classList.remove('hidden');
   document.querySelectorAll('.navitem').forEach(n=>n.classList.remove('active'));
   document.querySelector('.navitem[data-page="'+page+'"]').classList.add('active');
-  document.getElementById('pageTitle').textContent = {dashboard:"Tổng quan", projects:"Dự án", cashflow:"Dòng tiền toàn công ty"}[page];
+  document.getElementById('pageTitle').textContent = {dashboard:"Tổng quan", projects:"Dự án", cashflow:"Dòng tiền toàn công ty", reports:"Báo cáo"}[page];
   if(page==='projects') closeProject();
   if(page==='cashflow') loadCompanyCashflow();
+  if(page==='reports') loadReportsPage();
 }
 
 function statusBadge(status){
@@ -345,15 +357,18 @@ async function loadProjectsGrid(){
   const { data: projects, error } = await sb.from('projects').select('*').order('created_at');
   if(error){ console.error(error); return; }
   document.getElementById('projectsGrid').innerHTML = projects.map(p=>`
-    <div class="card proj-card" onclick="openProject('${p.id}')">
-      <div style="display:flex; justify-content:space-between;">
-        <div><h4 style="margin:0; font-size:15px;">${p.name}</h4><p style="margin:4px 0 0; font-size:12px; color:var(--muted);">${p.investor||'—'}</p></div>
-        ${statusBadge(p.status)}
+    <div class="card proj-card">
+      <div onclick="openProject('${p.id}')">
+        <div style="display:flex; justify-content:space-between;">
+          <div><h4 style="margin:0; font-size:15px;">${p.name}</h4><p style="margin:4px 0 0; font-size:12px; color:var(--muted);">${p.investor||'—'}</p></div>
+          ${statusBadge(p.status)}
+        </div>
+        <div class="progress-track" style="margin-top:16px;"><div class="progress-fill" style="width:${p.progress_percent}%;"></div></div>
+        <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:var(--muted);">
+          <span>Ngân sách: ${fmt(p.total_budget)} triệu</span><span style="color:var(--primary); font-weight:600;">Xem chi tiết →</span>
+        </div>
       </div>
-      <div class="progress-track" style="margin-top:16px;"><div class="progress-fill" style="width:${p.progress_percent}%;"></div></div>
-      <div style="display:flex; justify-content:space-between; margin-top:10px; font-size:12px; color:var(--muted);">
-        <span>Ngân sách: ${fmt(p.total_budget)} triệu</span><span style="color:var(--primary); font-weight:600;">Xem chi tiết →</span>
-      </div>
+      <button class="btn btn-ghost" style="width:100%; margin-top:12px; font-size:12px; color:var(--danger);" onclick="event.stopPropagation(); deleteProject('${p.id}')">🗑 Xóa dự án</button>
     </div>
   `).join('') || `<p style="color:var(--muted);">Chưa có dự án nào.</p>`;
 }
@@ -389,7 +404,11 @@ async function loadWbs(projectId){
   document.getElementById('wbsList').innerHTML = data.length ? data.map(w=>`
     <div style="margin-bottom:16px;">
       <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:6px;">
-        <span>${w.name}</span><span style="color:${w.actual_percent < w.planned_percent-10 ? 'var(--danger)':'var(--text2)'};">${w.actual_percent}% / ${w.planned_percent}%</span>
+        <span>${w.name}</span>
+        <span style="display:flex; align-items:center; gap:10px;">
+          <span style="color:${w.actual_percent < w.planned_percent-10 ? 'var(--danger)':'var(--text2)'};">${w.actual_percent}% / ${w.planned_percent}%</span>
+          <button onclick="deleteWbs('${w.id}')" style="background:none; border:none; color:var(--muted); font-size:13px;" title="Xóa hạng mục">🗑</button>
+        </span>
       </div>
       <div class="progress-track"><div class="progress-fill" style="width:${w.actual_percent}%; ${w.actual_percent < w.planned_percent-10 ? 'background:linear-gradient(90deg,var(--danger),var(--warning));':''}"></div></div>
     </div>
@@ -402,8 +421,9 @@ async function loadTxns(projectId){
   document.getElementById('txnRows').innerHTML = data.length ? data.map(t=>`
     <tr><td>${t.type==='thu'?'Thu':'Chi'}</td><td style="color:var(--text);">${t.description||t.category||''}</td><td>${t.txn_date}</td>
     <td style="text-align:right; ${t.type==='thu'?'color:var(--success); font-weight:600;':''}">${t.type==='thu'?'+':'-'}${fmt(t.amount)}</td>
-    <td>${statusBadge(t.status)}</td></tr>
-  `).join('') : `<tr><td colspan="5" style="color:var(--muted);">Chưa có giao dịch nào.</td></tr>`;
+    <td>${statusBadge(t.status)}</td>
+    <td style="text-align:right;"><button onclick="deleteTxn('${t.id}')" style="background:none; border:none; color:var(--muted);" title="Xóa">🗑</button></td></tr>
+  `).join('') : `<tr><td colspan="6" style="color:var(--muted);">Chưa có giao dịch nào.</td></tr>`;
 }
 
 // ---- COMPANY-WIDE CASHFLOW ----
@@ -465,6 +485,114 @@ async function createTxn(){
   closeModal('modalNewTxn');
   document.getElementById('ntDesc').value=''; document.getElementById('ntAmount').value='';
   loadTxns(currentProjectId);
+}
+
+// ---- XÓA DỰ ÁN / HẠNG MỤC / GIAO DỊCH ----
+async function deleteProject(id){
+  if(!confirm('Xóa dự án này? Toàn bộ hạng mục và giao dịch liên quan cũng sẽ bị xóa. Không thể hoàn tác.')) return;
+  const { error } = await sb.from('projects').delete().eq('id', id);
+  if(error){ alert(error.message); return; }
+  loadDashboard(); loadProjectsGrid();
+}
+
+async function deleteWbs(id){
+  if(!confirm('Xóa hạng mục công việc này?')) return;
+  const { error } = await sb.from('wbs_items').delete().eq('id', id);
+  if(error){ alert(error.message); return; }
+  loadWbs(currentProjectId);
+}
+
+async function deleteTxn(id){
+  if(!confirm('Xóa giao dịch này?')) return;
+  const { error } = await sb.from('transactions').delete().eq('id', id);
+  if(error){ alert(error.message); return; }
+  if(currentProjectId) loadTxns(currentProjectId);
+  loadCompanyCashflow();
+}
+
+// ---- BÁO CÁO: DANH SÁCH DỰ ÁN ----
+async function loadReportsPage(){
+  const { data: projects, error } = await sb.from('projects').select('*').order('created_at');
+  if(error){ console.error(error); return; }
+  document.getElementById('reportsList').innerHTML = projects.length ? projects.map(p=>`
+    <div class="row-item">
+      <div class="row-left">
+        <div><div class="name">${p.name}</div><div class="sub">${p.investor||'—'} · Ngân sách ${fmt(p.total_budget)} triệu</div></div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-ghost" style="font-size:12px; padding:8px 14px;" onclick="exportProjectExcel('${p.id}','${p.name.replace(/'/g,"")}')">⬇ Excel</button>
+        <button class="btn btn-ghost" style="font-size:12px; padding:8px 14px;" onclick="exportProjectPDF('${p.id}')">⬇ PDF</button>
+      </div>
+    </div>
+  `).join('') : `<p style="color:var(--muted);">Chưa có dự án nào để xuất báo cáo.</p>`;
+}
+
+// ---- XUẤT EXCEL (SheetJS) ----
+async function exportProjectExcel(projectId, projectName){
+  const { data: project } = await sb.from('projects').select('*').eq('id', projectId).single();
+  const { data: wbs } = await sb.from('wbs_items').select('*').eq('project_id', projectId).order('sort_order');
+  const { data: txns } = await sb.from('transactions').select('*').eq('project_id', projectId).order('txn_date');
+
+  const wb = XLSX.utils.book_new();
+
+  const infoSheet = XLSX.utils.aoa_to_sheet([
+    ['BÁO CÁO DỰ ÁN', project.name],
+    ['Chủ đầu tư', project.investor || ''],
+    ['Tổng ngân sách (triệu)', project.total_budget],
+    ['Tiến độ tổng thể (%)', project.progress_percent],
+    ['Trạng thái', project.status],
+    ['Ngày xuất báo cáo', new Date().toLocaleDateString('vi-VN')],
+  ]);
+  XLSX.utils.book_append_sheet(wb, infoSheet, 'Tổng quan');
+
+  const wbsRows = [['Hạng mục','% Kế hoạch','% Thực tế']].concat(
+    (wbs||[]).map(w=>[w.name, w.planned_percent, w.actual_percent])
+  );
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wbsRows), 'Tiến độ');
+
+  const txnRows = [['Loại','Nội dung','Ngày','Số tiền (triệu)','Trạng thái']].concat(
+    (txns||[]).map(t=>[t.type==='thu'?'Thu':'Chi', t.description||t.category||'', t.txn_date, t.amount, t.status])
+  );
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(txnRows), 'Dòng tiền');
+
+  XLSX.writeFile(wb, `BaoCao_${(projectName||'DuAn').replace(/\s+/g,'_')}.xlsx`);
+}
+
+// ---- XUẤT PDF (in qua trình duyệt) ----
+async function exportProjectPDF(projectId){
+  const { data: project } = await sb.from('projects').select('*').eq('id', projectId).single();
+  const { data: wbs } = await sb.from('wbs_items').select('*').eq('project_id', projectId).order('sort_order');
+  const { data: txns } = await sb.from('transactions').select('*').eq('project_id', projectId).order('txn_date');
+
+  const win = window.open('', '_blank');
+  win.document.write(`
+    <html><head><title>Báo cáo - ${project.name}</title>
+    <style>
+      body{font-family:Arial,sans-serif; padding:32px; color:#111;}
+      h1{font-size:20px; margin-bottom:4px;}
+      h2{font-size:15px; margin-top:28px; border-bottom:2px solid #7C3AED; padding-bottom:6px;}
+      table{width:100%; border-collapse:collapse; margin-top:10px; font-size:13px;}
+      th,td{border:1px solid #ddd; padding:8px; text-align:left;}
+      th{background:#f4f4f4;}
+      .meta{color:#555; font-size:13px; margin-bottom:20px;}
+    </style></head><body>
+    <h1>BÁO CÁO DỰ ÁN: ${project.name}</h1>
+    <div class="meta">Chủ đầu tư: ${project.investor||'—'} · Ngân sách: ${fmt(project.total_budget)} triệu ·
+      Tiến độ: ${project.progress_percent}% · Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}</div>
+
+    <h2>Tiến độ theo hạng mục (WBS)</h2>
+    <table><tr><th>Hạng mục</th><th>% Kế hoạch</th><th>% Thực tế</th></tr>
+      ${(wbs||[]).map(w=>`<tr><td>${w.name}</td><td>${w.planned_percent}%</td><td>${w.actual_percent}%</td></tr>`).join('') || '<tr><td colspan=3>Không có dữ liệu</td></tr>'}
+    </table>
+
+    <h2>Dòng tiền</h2>
+    <table><tr><th>Loại</th><th>Nội dung</th><th>Ngày</th><th>Số tiền (triệu)</th><th>Trạng thái</th></tr>
+      ${(txns||[]).map(t=>`<tr><td>${t.type==='thu'?'Thu':'Chi'}</td><td>${t.description||t.category||''}</td><td>${t.txn_date}</td><td>${fmt(t.amount)}</td><td>${t.status}</td></tr>`).join('') || '<tr><td colspan=5>Không có dữ liệu</td></tr>'}
+    </table>
+    <script>window.onload = () => window.print();</script>
+    </body></html>
+  `);
+  win.document.close();
 }
 </script>
 </body>
