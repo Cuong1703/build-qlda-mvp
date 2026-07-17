@@ -589,7 +589,7 @@ async function exportProjectPDF(projectId){
     <table><tr><th>Loại</th><th>Nội dung</th><th>Ngày</th><th>Số tiền (triệu)</th><th>Trạng thái</th></tr>
       ${(txns||[]).map(t=>`<tr><td>${t.type==='thu'?'Thu':'Chi'}</td><td>${t.description||t.category||''}</td><td>${t.txn_date}</td><td>${fmt(t.amount)}</td><td>${t.status}</td></tr>`).join('') || '<tr><td colspan=5>Không có dữ liệu</td></tr>'}
     </table>
-    <script>window.onload = () => window.print();</script>
+    <script>window.onload = () => window.print();<\/script>
     </body></html>
   `);
   win.document.close();
