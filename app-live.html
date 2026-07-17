@@ -207,9 +207,41 @@
 
       <!-- REPORTS -->
       <section id="page-reports" class="hidden">
-        <div class="banner" style="margin-bottom:20px;">📄 Xuất báo cáo tiến độ &amp; dòng tiền theo từng dự án, dựa trên dữ liệu thật trong Supabase.</div>
+        <div class="banner" style="margin-bottom:20px;">📊 Tổng hợp trực quan từ dữ liệu thật trong Supabase — cập nhật mỗi lần bạn mở trang này.</div>
+
+        <div class="grid g4" id="repKPIs" style="margin-bottom:20px;"></div>
+
+        <div class="grid g2" style="margin-bottom:20px;">
+          <div class="card">
+            <h3 style="margin:0 0 14px; font-size:15px;">Trạng thái dự án</h3>
+            <canvas id="repStatusChart" height="180"></canvas>
+            <div id="repStatusLegend" style="display:flex; flex-direction:column; gap:6px; margin-top:14px;"></div>
+          </div>
+          <div class="card">
+            <h3 style="margin:0 0 14px; font-size:15px;">Thu vs Chi toàn công ty</h3>
+            <canvas id="repMoneyChart" height="180"></canvas>
+            <div id="repMoneyLegend" style="display:flex; flex-direction:column; gap:6px; margin-top:14px;"></div>
+          </div>
+        </div>
+
+        <div class="grid g2" style="margin-bottom:20px;">
+          <div class="card">
+            <h3 style="margin:0 0 14px; font-size:15px;">Top dự án theo ngân sách</h3>
+            <div id="repTopBudget"></div>
+          </div>
+          <div class="card">
+            <h3 style="margin:0 0 14px; font-size:15px;">Top hạng mục chậm tiến độ nhất</h3>
+            <div id="repTopDelay"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:20px;">
+          <h3 style="margin:0 0 14px; font-size:15px;">Xu hướng dòng tiền theo tháng</h3>
+          <canvas id="repTrendChart" height="110"></canvas>
+        </div>
+
         <div class="card">
-          <h3 style="margin:0 0 14px; font-size:15px;">Chọn dự án để xuất báo cáo</h3>
+          <h3 style="margin:0 0 14px; font-size:15px;">Xuất báo cáo theo dự án</h3>
           <div id="reportsList"><p style="color:var(--muted);">Đang tải...</p></div>
         </div>
       </section>
@@ -644,10 +676,105 @@ async function deleteTxn(id){
   loadCompanyCashflow();
 }
 
-// ---- BÁO CÁO: DANH SÁCH DỰ ÁN ----
+let repCharts = {};
+function destroyChart(key){ if(repCharts[key]){ repCharts[key].destroy(); repCharts[key]=null; } }
+
+// ---- BÁO CÁO: DASHBOARD TỔNG HỢP ----
 async function loadReportsPage(){
-  const { data: projects, error } = await sb.from('projects').select('*').order('created_at');
-  if(error){ console.error(error); return; }
+  const { data: projects } = await sb.from('projects').select('*');
+  const { data: wbs } = await sb.from('wbs_items').select('*, projects(name)').is('parent_id', null);
+  const { data: txns } = await sb.from('transactions').select('*');
+  if(!projects) return;
+
+  // ---- KPI cards ----
+  const totalBudget = projects.reduce((a,p)=>a+Number(p.total_budget||0),0);
+  const totalChi = (txns||[]).filter(t=>t.type==='chi').reduce((a,t)=>a+Number(t.amount),0);
+  const totalThu = (txns||[]).filter(t=>t.type==='thu').reduce((a,t)=>a+Number(t.amount),0);
+  const avgProgress = projects.length ? Math.round(projects.reduce((a,p)=>a+Number(p.progress_percent||0),0)/projects.length) : 0;
+  document.getElementById('repKPIs').innerHTML = `
+    <div class="card metric-card"><div class="metric-top"><span class="label">Tổng ngân sách</span><div class="metric-icon">💼</div></div><div class="metric-value">${fmt(totalBudget)} triệu</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">Tổng đã chi</span><div class="metric-icon">📉</div></div><div class="metric-value">${fmt(totalChi)} triệu</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">Tổng đã thu</span><div class="metric-icon">📈</div></div><div class="metric-value" style="color:var(--success);">${fmt(totalThu)} triệu</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">Tiến độ trung bình</span><div class="metric-icon">📐</div></div><div class="metric-value">${avgProgress}%</div></div>
+  `;
+
+  // ---- Donut: trạng thái dự án ----
+  const statusCount = { on_track:0, warning:0, danger:0 };
+  projects.forEach(p => { statusCount[p.status] = (statusCount[p.status]||0)+1; });
+  destroyChart('status');
+  repCharts.status = new Chart(document.getElementById('repStatusChart'), {
+    type:'doughnut',
+    data:{ labels:['Đúng tiến độ','Sắp trễ','Vượt ngân sách'],
+      datasets:[{ data:[statusCount.on_track, statusCount.warning, statusCount.danger],
+        backgroundColor:['#22C55E','#F59E0B','#EF4444'], borderWidth:0 }] },
+    options:{ plugins:{legend:{display:false}}, cutout:'65%' }
+  });
+  document.getElementById('repStatusLegend').innerHTML = `
+    <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🟢 Đúng tiến độ</span><span>${statusCount.on_track} dự án</span></div>
+    <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🟡 Sắp trễ</span><span>${statusCount.warning} dự án</span></div>
+    <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🔴 Vượt ngân sách</span><span>${statusCount.danger} dự án</span></div>
+  `;
+
+  // ---- Donut: thu vs chi ----
+  destroyChart('money');
+  repCharts.money = new Chart(document.getElementById('repMoneyChart'), {
+    type:'doughnut',
+    data:{ labels:['Thu','Chi'], datasets:[{ data:[totalThu, totalChi], backgroundColor:['#22C55E','#7C3AED'], borderWidth:0 }] },
+    options:{ plugins:{legend:{display:false}}, cutout:'65%' }
+  });
+  document.getElementById('repMoneyLegend').innerHTML = `
+    <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🟢 Thu</span><span>${fmt(totalThu)} triệu</span></div>
+    <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🟣 Chi</span><span>${fmt(totalChi)} triệu</span></div>
+    <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--muted);"><span>Chênh lệch</span><span>${fmt(totalThu-totalChi)} triệu</span></div>
+  `;
+
+  // ---- Top dự án theo ngân sách ----
+  const topBudget = [...projects].sort((a,b)=>b.total_budget-a.total_budget).slice(0,6);
+  const maxBudget = Math.max(...topBudget.map(p=>Number(p.total_budget||0)), 1);
+  document.getElementById('repTopBudget').innerHTML = topBudget.map((p,i)=>`
+    <div class="row-item">
+      <div class="row-left"><span style="width:18px; color:var(--muted); font-size:12px;">${i+1}</span>
+        <div><div class="name">${p.name}</div><div class="sub">${fmt(p.total_budget)} triệu</div></div>
+      </div>
+      <div style="width:100px;"><div class="progress-track"><div class="progress-fill" style="width:${Math.round(p.total_budget/maxBudget*100)}%;"></div></div></div>
+    </div>
+  `).join('') || `<p style="color:var(--muted); font-size:13px;">Chưa có dự án.</p>`;
+
+  // ---- Top hạng mục chậm tiến độ ----
+  const delayed = (wbs||[]).map(w=>({...w, gap: (w.planned_percent||0)-(w.actual_percent||0)}))
+    .filter(w=>w.gap > 5).sort((a,b)=>b.gap-a.gap).slice(0,6);
+  document.getElementById('repTopDelay').innerHTML = delayed.length ? delayed.map(w=>`
+    <div class="row-item">
+      <div class="row-left"><div><div class="name">${w.name}</div><div class="sub">${w.projects?.name||''}</div></div></div>
+      <span class="badge b-danger">Chậm ${w.gap}%</span>
+    </div>
+  `).join('') : `<p style="color:var(--muted); font-size:13px;">Không có hạng mục nào chậm tiến độ đáng kể 🎉</p>`;
+
+  // ---- Xu hướng dòng tiền theo tháng ----
+  const byMonth = {};
+  (txns||[]).forEach(t=>{
+    const m = (t.txn_date||'').slice(0,7); // YYYY-MM
+    if(!m) return;
+    if(!byMonth[m]) byMonth[m] = { thu:0, chi:0 };
+    byMonth[m][t.type] += Number(t.amount);
+  });
+  const months = Object.keys(byMonth).sort();
+  destroyChart('trend');
+  repCharts.trend = new Chart(document.getElementById('repTrendChart'), {
+    type:'line',
+    data:{ labels: months.length?months:['Chưa có dữ liệu'],
+      datasets:[
+        { label:'Thu', data: months.map(m=>byMonth[m].thu), borderColor:'#7C3AED', backgroundColor:'rgba(124,58,237,.15)', fill:true, tension:.35 },
+        { label:'Chi', data: months.map(m=>byMonth[m].chi), borderColor:'#38BDF8', backgroundColor:'rgba(56,189,248,.1)', fill:true, tension:.35 },
+      ] },
+    options:{ plugins:{legend:{labels:{color:'#A1A0AC'}}},
+      scales:{ x:{ticks:{color:'#A1A0AC'}, grid:{color:'#2A2733'}}, y:{ticks:{color:'#A1A0AC'}, grid:{color:'#2A2733'}} } }
+  });
+
+  loadReportsList(projects);
+}
+
+function loadReportsList(projects){
   document.getElementById('reportsList').innerHTML = projects.length ? projects.map(p=>`
     <div class="row-item">
       <div class="row-left">
