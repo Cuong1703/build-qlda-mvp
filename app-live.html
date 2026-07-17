@@ -209,16 +209,24 @@
       <section id="page-reports" class="hidden">
         <div class="banner" style="margin-bottom:20px;">📊 Tổng hợp trực quan từ dữ liệu thật trong Supabase — cập nhật mỗi lần bạn mở trang này.</div>
 
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
+          <label style="font-size:12px; color:var(--muted); font-weight:600;">Phạm vi báo cáo:</label>
+          <select id="repProjectFilter" onchange="loadReportsPage(this.value)"
+            style="background:var(--surface2); border:1px solid var(--border); border-radius:999px; padding:8px 14px; color:var(--text); font-size:13px;">
+            <option value="all">Toàn công ty</option>
+          </select>
+        </div>
+
         <div class="grid g4" id="repKPIs" style="margin-bottom:20px;"></div>
 
         <div class="grid g2" style="margin-bottom:20px;">
           <div class="card">
-            <h3 style="margin:0 0 14px; font-size:15px;">Trạng thái dự án</h3>
+            <h3 style="margin:0 0 14px; font-size:15px;" id="repStatusTitle">Trạng thái dự án</h3>
             <canvas id="repStatusChart" height="180"></canvas>
             <div id="repStatusLegend" style="display:flex; flex-direction:column; gap:6px; margin-top:14px;"></div>
           </div>
           <div class="card">
-            <h3 style="margin:0 0 14px; font-size:15px;">Thu vs Chi toàn công ty</h3>
+            <h3 style="margin:0 0 14px; font-size:15px;">Thu vs Chi</h3>
             <canvas id="repMoneyChart" height="180"></canvas>
             <div id="repMoneyLegend" style="display:flex; flex-direction:column; gap:6px; margin-top:14px;"></div>
           </div>
@@ -226,7 +234,7 @@
 
         <div class="grid g2" style="margin-bottom:20px;">
           <div class="card">
-            <h3 style="margin:0 0 14px; font-size:15px;">Top dự án theo ngân sách</h3>
+            <h3 style="margin:0 0 14px; font-size:15px;" id="repTopBudgetTitle">Top dự án theo ngân sách</h3>
             <div id="repTopBudget"></div>
           </div>
           <div class="card">
@@ -679,12 +687,24 @@ async function deleteTxn(id){
 let repCharts = {};
 function destroyChart(key){ if(repCharts[key]){ repCharts[key].destroy(); repCharts[key]=null; } }
 
-// ---- BÁO CÁO: DASHBOARD TỔNG HỢP ----
-async function loadReportsPage(){
-  const { data: projects } = await sb.from('projects').select('*');
-  const { data: wbs } = await sb.from('wbs_items').select('*, projects(name)').is('parent_id', null);
-  const { data: txns } = await sb.from('transactions').select('*');
-  if(!projects) return;
+// ---- BÁO CÁO: DASHBOARD TỔNG HỢP (có thể lọc theo dự án) ----
+async function loadReportsPage(scopeId){
+  scopeId = scopeId || 'all';
+  const { data: allProjects } = await sb.from('projects').select('*');
+  const { data: allWbs } = await sb.from('wbs_items').select('*, projects(name)').is('parent_id', null);
+  const { data: allTxns } = await sb.from('transactions').select('*, projects(name)');
+  if(!allProjects) return;
+
+  // Điền dropdown lọc (giữ nguyên lựa chọn hiện tại)
+  const filterEl = document.getElementById('repProjectFilter');
+  filterEl.innerHTML = `<option value="all">Toàn công ty</option>` +
+    allProjects.map(p=>`<option value="${p.id}" ${scopeId===p.id?'selected':''}>${p.name}</option>`).join('');
+  filterEl.value = scopeId;
+
+  const scoped = scopeId === 'all';
+  const projects = scoped ? allProjects : allProjects.filter(p=>p.id===scopeId);
+  const wbs = scoped ? allWbs : (allWbs||[]).filter(w=>w.project_id===scopeId);
+  const txns = scoped ? allTxns : (allTxns||[]).filter(t=>t.project_id===scopeId);
 
   // ---- KPI cards ----
   const totalBudget = projects.reduce((a,p)=>a+Number(p.total_budget||0),0);
@@ -692,30 +712,47 @@ async function loadReportsPage(){
   const totalThu = (txns||[]).filter(t=>t.type==='thu').reduce((a,t)=>a+Number(t.amount),0);
   const avgProgress = projects.length ? Math.round(projects.reduce((a,p)=>a+Number(p.progress_percent||0),0)/projects.length) : 0;
   document.getElementById('repKPIs').innerHTML = `
-    <div class="card metric-card"><div class="metric-top"><span class="label">Tổng ngân sách</span><div class="metric-icon">💼</div></div><div class="metric-value">${fmt(totalBudget)} triệu</div></div>
-    <div class="card metric-card"><div class="metric-top"><span class="label">Tổng đã chi</span><div class="metric-icon">📉</div></div><div class="metric-value">${fmt(totalChi)} triệu</div></div>
-    <div class="card metric-card"><div class="metric-top"><span class="label">Tổng đã thu</span><div class="metric-icon">📈</div></div><div class="metric-value" style="color:var(--success);">${fmt(totalThu)} triệu</div></div>
-    <div class="card metric-card"><div class="metric-top"><span class="label">Tiến độ trung bình</span><div class="metric-icon">📐</div></div><div class="metric-value">${avgProgress}%</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">${scoped?'Tổng ngân sách':'Ngân sách dự án'}</span><div class="metric-icon">💼</div></div><div class="metric-value">${fmt(totalBudget)} triệu</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">Đã chi</span><div class="metric-icon">📉</div></div><div class="metric-value">${fmt(totalChi)} triệu</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">Đã thu</span><div class="metric-icon">📈</div></div><div class="metric-value" style="color:var(--success);">${fmt(totalThu)} triệu</div></div>
+    <div class="card metric-card"><div class="metric-top"><span class="label">${scoped?'Tiến độ trung bình':'Tiến độ dự án'}</span><div class="metric-icon">📐</div></div><div class="metric-value">${avgProgress}%</div></div>
   `;
 
-  // ---- Donut: trạng thái dự án ----
-  const statusCount = { on_track:0, warning:0, danger:0 };
-  projects.forEach(p => { statusCount[p.status] = (statusCount[p.status]||0)+1; });
+  // ---- Donut #1: trạng thái dự án (toàn công ty) HOẶC trạng thái hạng mục (1 dự án) ----
   destroyChart('status');
-  repCharts.status = new Chart(document.getElementById('repStatusChart'), {
-    type:'doughnut',
-    data:{ labels:['Đúng tiến độ','Sắp trễ','Vượt ngân sách'],
-      datasets:[{ data:[statusCount.on_track, statusCount.warning, statusCount.danger],
-        backgroundColor:['#22C55E','#F59E0B','#EF4444'], borderWidth:0 }] },
-    options:{ plugins:{legend:{display:false}}, cutout:'65%' }
-  });
-  document.getElementById('repStatusLegend').innerHTML = `
-    <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🟢 Đúng tiến độ</span><span>${statusCount.on_track} dự án</span></div>
-    <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🟡 Sắp trễ</span><span>${statusCount.warning} dự án</span></div>
-    <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🔴 Vượt ngân sách</span><span>${statusCount.danger} dự án</span></div>
-  `;
+  if(scoped){
+    document.getElementById('repStatusTitle').textContent = 'Trạng thái dự án';
+    const statusCount = { on_track:0, warning:0, danger:0 };
+    projects.forEach(p => { statusCount[p.status] = (statusCount[p.status]||0)+1; });
+    repCharts.status = new Chart(document.getElementById('repStatusChart'), {
+      type:'doughnut',
+      data:{ labels:['Đúng tiến độ','Sắp trễ','Vượt ngân sách'],
+        datasets:[{ data:[statusCount.on_track, statusCount.warning, statusCount.danger], backgroundColor:['#22C55E','#F59E0B','#EF4444'], borderWidth:0 }] },
+      options:{ plugins:{legend:{display:false}}, cutout:'65%' }
+    });
+    document.getElementById('repStatusLegend').innerHTML = `
+      <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🟢 Đúng tiến độ</span><span>${statusCount.on_track} dự án</span></div>
+      <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🟡 Sắp trễ</span><span>${statusCount.warning} dự án</span></div>
+      <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🔴 Vượt ngân sách</span><span>${statusCount.danger} dự án</span></div>
+    `;
+  } else {
+    document.getElementById('repStatusTitle').textContent = 'Trạng thái hạng mục công việc';
+    const wStatus = { chua_lam:0, dang_lam:0, hoan_thanh:0 };
+    (wbs||[]).forEach(w => { wStatus[w.status||'chua_lam'] = (wStatus[w.status||'chua_lam']||0)+1; });
+    repCharts.status = new Chart(document.getElementById('repStatusChart'), {
+      type:'doughnut',
+      data:{ labels:['Chưa làm','Đang làm','Hoàn thành'],
+        datasets:[{ data:[wStatus.chua_lam, wStatus.dang_lam, wStatus.hoan_thanh], backgroundColor:['#6B6975','#F59E0B','#22C55E'], borderWidth:0 }] },
+      options:{ plugins:{legend:{display:false}}, cutout:'65%' }
+    });
+    document.getElementById('repStatusLegend').innerHTML = `
+      <div style="display:flex; justify-content:space-between; font-size:12px;"><span>⚪ Chưa làm</span><span>${wStatus.chua_lam} hạng mục</span></div>
+      <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🟡 Đang làm</span><span>${wStatus.dang_lam} hạng mục</span></div>
+      <div style="display:flex; justify-content:space-between; font-size:12px;"><span>🟢 Hoàn thành</span><span>${wStatus.hoan_thanh} hạng mục</span></div>
+    `;
+  }
 
-  // ---- Donut: thu vs chi ----
+  // ---- Donut #2: thu vs chi ----
   destroyChart('money');
   repCharts.money = new Chart(document.getElementById('repMoneyChart'), {
     type:'doughnut',
@@ -728,24 +765,36 @@ async function loadReportsPage(){
     <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--muted);"><span>Chênh lệch</span><span>${fmt(totalThu-totalChi)} triệu</span></div>
   `;
 
-  // ---- Top dự án theo ngân sách ----
-  const topBudget = [...projects].sort((a,b)=>b.total_budget-a.total_budget).slice(0,6);
-  const maxBudget = Math.max(...topBudget.map(p=>Number(p.total_budget||0)), 1);
-  document.getElementById('repTopBudget').innerHTML = topBudget.map((p,i)=>`
-    <div class="row-item">
-      <div class="row-left"><span style="width:18px; color:var(--muted); font-size:12px;">${i+1}</span>
-        <div><div class="name">${p.name}</div><div class="sub">${fmt(p.total_budget)} triệu</div></div>
+  // ---- Top-list #1: theo ngân sách (toàn công ty) HOẶC theo % hoàn thành (1 dự án) ----
+  if(scoped){
+    document.getElementById('repTopBudgetTitle').textContent = 'Top dự án theo ngân sách';
+    const topBudget = [...projects].sort((a,b)=>b.total_budget-a.total_budget).slice(0,6);
+    const maxBudget = Math.max(...topBudget.map(p=>Number(p.total_budget||0)), 1);
+    document.getElementById('repTopBudget').innerHTML = topBudget.map((p,i)=>`
+      <div class="row-item">
+        <div class="row-left"><span style="width:18px; color:var(--muted); font-size:12px;">${i+1}</span>
+          <div><div class="name">${p.name}</div><div class="sub">${fmt(p.total_budget)} triệu</div></div>
+        </div>
+        <div style="width:100px;"><div class="progress-track"><div class="progress-fill" style="width:${Math.round(p.total_budget/maxBudget*100)}%;"></div></div></div>
       </div>
-      <div style="width:100px;"><div class="progress-track"><div class="progress-fill" style="width:${Math.round(p.total_budget/maxBudget*100)}%;"></div></div></div>
-    </div>
-  `).join('') || `<p style="color:var(--muted); font-size:13px;">Chưa có dự án.</p>`;
+    `).join('') || `<p style="color:var(--muted); font-size:13px;">Chưa có dự án.</p>`;
+  } else {
+    document.getElementById('repTopBudgetTitle').textContent = 'Hạng mục theo % hoàn thành';
+    const sortedWbs = [...(wbs||[])].sort((a,b)=>b.actual_percent-a.actual_percent).slice(0,6);
+    document.getElementById('repTopBudget').innerHTML = sortedWbs.length ? sortedWbs.map(w=>`
+      <div class="row-item">
+        <div class="row-left"><div><div class="name">${w.name}</div></div></div>
+        <div style="width:100px;"><div class="progress-track"><div class="progress-fill" style="width:${w.actual_percent}%;"></div></div></div>
+      </div>
+    `).join('') : `<p style="color:var(--muted); font-size:13px;">Chưa có hạng mục.</p>`;
+  }
 
-  // ---- Top hạng mục chậm tiến độ ----
+  // ---- Top-list #2: hạng mục chậm tiến độ nhất ----
   const delayed = (wbs||[]).map(w=>({...w, gap: (w.planned_percent||0)-(w.actual_percent||0)}))
     .filter(w=>w.gap > 5).sort((a,b)=>b.gap-a.gap).slice(0,6);
   document.getElementById('repTopDelay').innerHTML = delayed.length ? delayed.map(w=>`
     <div class="row-item">
-      <div class="row-left"><div><div class="name">${w.name}</div><div class="sub">${w.projects?.name||''}</div></div></div>
+      <div class="row-left"><div><div class="name">${w.name}</div>${scoped ? `<div class="sub">${w.projects?.name||''}</div>` : ''}</div></div>
       <span class="badge b-danger">Chậm ${w.gap}%</span>
     </div>
   `).join('') : `<p style="color:var(--muted); font-size:13px;">Không có hạng mục nào chậm tiến độ đáng kể 🎉</p>`;
@@ -753,7 +802,7 @@ async function loadReportsPage(){
   // ---- Xu hướng dòng tiền theo tháng ----
   const byMonth = {};
   (txns||[]).forEach(t=>{
-    const m = (t.txn_date||'').slice(0,7); // YYYY-MM
+    const m = (t.txn_date||'').slice(0,7);
     if(!m) return;
     if(!byMonth[m]) byMonth[m] = { thu:0, chi:0 };
     byMonth[m][t.type] += Number(t.amount);
@@ -771,7 +820,7 @@ async function loadReportsPage(){
       scales:{ x:{ticks:{color:'#A1A0AC'}, grid:{color:'#2A2733'}}, y:{ticks:{color:'#A1A0AC'}, grid:{color:'#2A2733'}} } }
   });
 
-  loadReportsList(projects);
+  loadReportsList(allProjects);
 }
 
 function loadReportsList(projects){
@@ -789,41 +838,92 @@ function loadReportsList(projects){
 }
 
 // ---- XUẤT EXCEL (SheetJS) ----
+function barify(percent, total=20){
+  const p = Math.max(0, Math.min(100, Number(percent)||0));
+  const filled = Math.round(total*p/100);
+  return '█'.repeat(filled) + '░'.repeat(total-filled) + `  ${p}%`;
+}
+
 async function exportProjectExcel(projectId, projectName){
   const { data: project } = await sb.from('projects').select('*').eq('id', projectId).single();
   const { data: wbs } = await sb.from('wbs_items').select('*').eq('project_id', projectId).order('sort_order');
   const { data: txns } = await sb.from('transactions').select('*').eq('project_id', projectId).order('txn_date');
 
+  const totalChi = (txns||[]).filter(t=>t.type==='chi').reduce((a,t)=>a+Number(t.amount),0);
+  const totalThu = (txns||[]).filter(t=>t.type==='thu').reduce((a,t)=>a+Number(t.amount),0);
+  const spentPercent = project.total_budget ? Math.round(totalChi/project.total_budget*100) : 0;
+
   const wb = XLSX.utils.book_new();
 
+  // Sheet 1: Tổng quan trực quan (thanh bar bằng ký tự thay cho chart Excel)
   const infoSheet = XLSX.utils.aoa_to_sheet([
     ['BÁO CÁO DỰ ÁN', project.name],
     ['Chủ đầu tư', project.investor || ''],
     ['Tổng ngân sách (triệu)', project.total_budget],
-    ['Tiến độ tổng thể (%)', project.progress_percent],
+    ['Đã chi (triệu)', totalChi],
+    ['Đã thu (triệu)', totalThu],
     ['Trạng thái', project.status],
     ['Ngày xuất báo cáo', new Date().toLocaleDateString('vi-VN')],
+    [],
+    ['TRỰC QUAN NHANH', ''],
+    ['Tiến độ tổng thể', barify(project.progress_percent)],
+    ['% Ngân sách đã dùng', barify(spentPercent)],
   ]);
+  infoSheet['!cols'] = [{wch:26},{wch:34}];
   XLSX.utils.book_append_sheet(wb, infoSheet, 'Tổng quan');
 
-  const wbsRows = [['Hạng mục','% Kế hoạch','% Thực tế']].concat(
-    (wbs||[]).map(w=>[w.name, w.planned_percent, w.actual_percent])
+  // Sheet 2: Tiến độ — kèm cột thanh trực quan
+  const wbsRows = [['Hạng mục','% Kế hoạch','% Thực tế','Biểu đồ']].concat(
+    (wbs||[]).map(w=>[w.name, w.planned_percent, w.actual_percent, barify(w.actual_percent)])
   );
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(wbsRows), 'Tiến độ');
+  const wbsSheet = XLSX.utils.aoa_to_sheet(wbsRows);
+  wbsSheet['!cols'] = [{wch:28},{wch:12},{wch:12},{wch:30}];
+  XLSX.utils.book_append_sheet(wb, wbsSheet, 'Tiến độ');
 
+  // Sheet 3: Dòng tiền
   const txnRows = [['Loại','Nội dung','Ngày','Số tiền (triệu)','Trạng thái']].concat(
     (txns||[]).map(t=>[t.type==='thu'?'Thu':'Chi', t.description||t.category||'', t.txn_date, t.amount, t.status])
   );
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(txnRows), 'Dòng tiền');
+  const txnSheet = XLSX.utils.aoa_to_sheet(txnRows);
+  txnSheet['!cols'] = [{wch:8},{wch:34},{wch:12},{wch:16},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, txnSheet, 'Dòng tiền');
 
   XLSX.writeFile(wb, `BaoCao_${(projectName||'DuAn').replace(/\s+/g,'_')}.xlsx`);
 }
 
-// ---- XUẤT PDF (in qua trình duyệt) ----
+// Vẽ 1 chart tạm (ẩn) rồi xuất ra ảnh PNG base64 để chèn vào PDF
+function renderChartImage(config, width=420, height=260){
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const chart = new Chart(canvas.getContext('2d'), { ...config, options:{ ...(config.options||{}), animation:false, responsive:false } });
+  const url = chart.toBase64Image();
+  chart.destroy();
+  return url;
+}
+
+// ---- XUẤT PDF (in qua trình duyệt, có ảnh biểu đồ thật) ----
 async function exportProjectPDF(projectId){
   const { data: project } = await sb.from('projects').select('*').eq('id', projectId).single();
-  const { data: wbs } = await sb.from('wbs_items').select('*').eq('project_id', projectId).order('sort_order');
+  const { data: wbs } = await sb.from('wbs_items').select('*').eq('project_id', projectId).is('parent_id', null).order('sort_order');
   const { data: txns } = await sb.from('transactions').select('*').eq('project_id', projectId).order('txn_date');
+
+  const totalChi = (txns||[]).filter(t=>t.type==='chi').reduce((a,t)=>a+Number(t.amount),0);
+  const totalThu = (txns||[]).filter(t=>t.type==='thu').reduce((a,t)=>a+Number(t.amount),0);
+
+  const progressChartImg = renderChartImage({
+    type:'bar',
+    data:{ labels:(wbs||[]).map(w=>w.name), datasets:[
+      { label:'Kế hoạch', data:(wbs||[]).map(w=>w.planned_percent), backgroundColor:'#6B6975' },
+      { label:'Thực tế', data:(wbs||[]).map(w=>w.actual_percent), backgroundColor:'#7C3AED' },
+    ]},
+    options:{ indexAxis:'y', plugins:{legend:{labels:{color:'#333'}}}, scales:{x:{max:100}} }
+  });
+
+  const moneyChartImg = renderChartImage({
+    type:'doughnut',
+    data:{ labels:['Thu','Chi'], datasets:[{ data:[totalThu, totalChi], backgroundColor:['#22C55E','#7C3AED'] }] },
+    options:{ plugins:{legend:{labels:{color:'#333'}, position:'bottom'}} }
+  }, 300, 260);
 
   const win = window.open('', '_blank');
   win.document.write(`
@@ -836,10 +936,18 @@ async function exportProjectPDF(projectId){
       th,td{border:1px solid #ddd; padding:8px; text-align:left;}
       th{background:#f4f4f4;}
       .meta{color:#555; font-size:13px; margin-bottom:20px;}
+      .charts{display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap;}
+      .charts img{max-width:100%;}
     </style></head><body>
     <h1>BÁO CÁO DỰ ÁN: ${project.name}</h1>
     <div class="meta">Chủ đầu tư: ${project.investor||'—'} · Ngân sách: ${fmt(project.total_budget)} triệu ·
       Tiến độ: ${project.progress_percent}% · Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}</div>
+
+    <h2>Biểu đồ tổng quan</h2>
+    <div class="charts">
+      <img src="${progressChartImg}" width="420">
+      <img src="${moneyChartImg}" width="260">
+    </div>
 
     <h2>Tiến độ theo hạng mục (WBS)</h2>
     <table><tr><th>Hạng mục</th><th>% Kế hoạch</th><th>% Thực tế</th></tr>
