@@ -336,17 +336,30 @@ window.addEventListener('load', () => {
 async function signUp(){
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
-  if(!sb) return;
-  const { error } = await sb.auth.signUp({ email, password });
-  document.getElementById('loginError').textContent = error ? error.message : 'Đã gửi email xác nhận — kiểm tra hộp thư rồi đăng nhập lại.';
+  if(!sb){ document.getElementById('loginError').textContent = 'Chưa cấu hình Supabase trong config.js'; return; }
+  if(!email || !password){ document.getElementById('loginError').textContent = 'Vui lòng nhập email và mật khẩu.'; return; }
+  if(password.length < 6){ document.getElementById('loginError').textContent = 'Mật khẩu cần tối thiểu 6 ký tự.'; return; }
+
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if(error){ document.getElementById('loginError').textContent = 'Lỗi đăng ký: ' + error.message; return; }
+
+  if(data.session){
+    // Dự án đã tắt "Confirm email" → đăng ký xong là có phiên đăng nhập luôn
+    showApp(data.session);
+  } else {
+    document.getElementById('loginError').style.color = 'var(--success)';
+    document.getElementById('loginError').textContent = 'Đăng ký thành công! Kiểm tra email để xác nhận, sau đó quay lại đăng nhập.';
+  }
 }
 
 async function login(){
   const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
+  document.getElementById('loginError').style.color = 'var(--danger)';
   if(!sb){ document.getElementById('loginError').textContent = 'Chưa cấu hình Supabase trong config.js'; return; }
+  if(!email || !password){ document.getElementById('loginError').textContent = 'Vui lòng nhập email và mật khẩu.'; return; }
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  if(error){ document.getElementById('loginError').textContent = error.message; return; }
+  if(error){ document.getElementById('loginError').textContent = 'Lỗi đăng nhập: ' + error.message; return; }
   showApp(data.session);
 }
 
