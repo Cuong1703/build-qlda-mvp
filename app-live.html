@@ -315,6 +315,27 @@
   </div>
 </div>
 
+<div id="modalAttachments" class="modal-bg hidden">
+  <div class="card modal" style="max-width:460px;">
+    <h3 style="margin:0 0 4px; font-size:15px;">📎 File đính kèm</h3>
+    <p style="margin:0 0 16px; font-size:12px; color:var(--muted);" id="attTaskName"></p>
+
+    <div id="attList" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px; max-height:240px; overflow-y:auto;"></div>
+
+    <div class="field">
+      <label>Tải file lên (bản vẽ, hình ảnh, biên bản...)</label>
+      <input id="attFileInput" type="file"
+        style="background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:9px; color:var(--text); font-size:13px; width:100%;">
+    </div>
+    <p id="attUploadStatus" style="font-size:12px; color:var(--muted); min-height:14px; margin:-6px 0 10px;"></p>
+
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-ghost" style="flex:1;" onclick="closeModal('modalAttachments')">Đóng</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="uploadAttachment()">⬆ Tải lên</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let sb = null;
 let currentProjectId = null;
@@ -503,6 +524,7 @@ async function loadWbs(projectId){
             ? `<span style="color:${late?'var(--danger)':'var(--text2)'};">${actual}% / ${planned}%</span>`
             : `<input type="number" value="${w.actual_percent}" onchange="quickUpdateWbs('${w.id}','actual_percent',this.value)" style="width:52px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:4px 6px; color:var(--text); font-size:12px;"> % / ${w.planned_percent}%`
           }
+          <button onclick="openAttachmentsModal('${w.id}','${w.name.replace(/'/g,"")}')" style="background:none;border:none;color:var(--muted);" title="File đính kèm">📎</button>
           <button onclick="openNewWbsModal(null,'${w.id}')" style="background:none;border:none;color:var(--muted);" title="Sửa">✏️</button>
           <button onclick="deleteWbs('${w.id}')" style="background:none; border:none; color:var(--muted);" title="Xóa hạng mục">🗑</button>
         </span>
@@ -521,6 +543,7 @@ async function loadWbs(projectId){
                   <option value="hoan_thanh" ${c.status==='hoan_thanh'?'selected':''}>Hoàn thành</option>
                 </select>
                 <input type="number" value="${c.actual_percent}" onchange="quickUpdateWbs('${c.id}','actual_percent',this.value)" style="width:46px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:3px 5px; color:var(--text); font-size:11px;">%
+                <button onclick="openAttachmentsModal('${c.id}','${c.name.replace(/'/g,"")}')" style="background:none;border:none;color:var(--muted); font-size:12px;" title="File đính kèm">📎</button>
                 <button onclick="openNewWbsModal(null,'${c.id}')" style="background:none;border:none;color:var(--muted); font-size:12px;" title="Sửa">✏️</button>
                 <button onclick="deleteWbs('${c.id}')" style="background:none; border:none; color:var(--muted); font-size:12px;" title="Xóa">🗑</button>
               </span>
@@ -695,6 +718,63 @@ async function deleteTxn(id){
   if(error){ alert(error.message); return; }
   if(currentProjectId) loadTxns(currentProjectId);
   loadCompanyCashflow();
+}
+
+// ---- FILE ĐÍNH KÈM CHO TỪNG CÔNG VIỆC ----
+let currentAttachmentWbsId = null;
+
+async function openAttachmentsModal(wbsId, taskName){
+  currentAttachmentWbsId = wbsId;
+  document.getElementById('attTaskName').textContent = 'Công việc: ' + taskName;
+  document.getElementById('attFileInput').value = '';
+  document.getElementById('attUploadStatus').textContent = '';
+  await loadAttachments(wbsId);
+  openModal('modalAttachments');
+}
+
+async function loadAttachments(wbsId){
+  const { data, error } = await sb.from('wbs_attachments').select('*').eq('wbs_item_id', wbsId).order('created_at', {ascending:false});
+  if(error){ document.getElementById('attList').innerHTML = `<p style="color:var(--danger); font-size:12px;">${error.message}</p>`; return; }
+  document.getElementById('attList').innerHTML = data.length ? data.map(a=>{
+    const { data: pub } = sb.storage.from('attachments').getPublicUrl(a.file_path);
+    return `
+    <div class="row-item" style="padding:8px 12px;">
+      <a href="${pub.publicUrl}" target="_blank" style="font-size:12px; color:var(--info); word-break:break-all;">📄 ${a.file_name}</a>
+      <button onclick="deleteAttachment('${a.id}','${a.file_path}')" style="background:none;border:none;color:var(--muted); flex-shrink:0;" title="Xóa file">🗑</button>
+    </div>`;
+  }).join('') : `<p style="color:var(--muted); font-size:12px;">Chưa có file nào.</p>`;
+}
+
+async function uploadAttachment(){
+  const fileInput = document.getElementById('attFileInput');
+  const file = fileInput.files[0];
+  if(!file || !currentAttachmentWbsId) return;
+  document.getElementById('attUploadStatus').textContent = 'Đang tải lên...';
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+  const filePath = `${currentAttachmentWbsId}/${Date.now()}_${safeName}`;
+
+  const { error: upErr } = await sb.storage.from('attachments').upload(filePath, file);
+  if(upErr){ document.getElementById('attUploadStatus').textContent = 'Lỗi: ' + upErr.message; return; }
+
+  const { data: userData } = await sb.auth.getUser();
+  const { error: dbErr } = await sb.from('wbs_attachments').insert({
+    wbs_item_id: currentAttachmentWbsId, file_name: file.name, file_path: filePath,
+    file_size: file.size, uploaded_by: userData?.user?.id
+  });
+  if(dbErr){ document.getElementById('attUploadStatus').textContent = 'Lỗi: ' + dbErr.message; return; }
+
+  document.getElementById('attUploadStatus').textContent = 'Tải lên thành công!';
+  fileInput.value = '';
+  loadAttachments(currentAttachmentWbsId);
+}
+
+async function deleteAttachment(id, filePath){
+  if(!confirm('Xóa file này?')) return;
+  await sb.storage.from('attachments').remove([filePath]);
+  const { error } = await sb.from('wbs_attachments').delete().eq('id', id);
+  if(error){ alert(error.message); return; }
+  loadAttachments(currentAttachmentWbsId);
 }
 
 let repCharts = {};
