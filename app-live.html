@@ -6,6 +6,9 @@
 <title>BUILD QLDA — Ứng dụng (kết nối Supabase)</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
 <style>
@@ -172,6 +175,7 @@
           <div class="tabs" style="margin:16px 0 20px;">
             <button class="tab active" onclick="switchDetailTab(this,'d-progress')">Tiến độ</button>
             <button class="tab" onclick="switchDetailTab(this,'d-cashflow')">Dòng tiền</button>
+            <button class="tab" onclick="switchDetailTab(this,'d-files')">Bản vẽ / Mô hình 3D</button>
           </div>
           <div id="d-progress" class="detail-tab">
             <div class="card">
@@ -190,6 +194,23 @@
               </div>
               <table><thead><tr><th>Loại</th><th>Nội dung</th><th>Ngày</th><th style="text-align:right;">Số tiền</th><th>Trạng thái</th><th></th></tr></thead>
               <tbody id="txnRows"></tbody></table>
+            </div>
+          </div>
+          <div id="d-files" class="detail-tab hidden">
+            <div class="card">
+              <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+                <div>
+                  <h3 style="margin:0; font-size:15px;">Bản vẽ &amp; Mô hình 3D</h3>
+                  <p style="margin:4px 0 0; font-size:12px; color:var(--muted);">Hỗ trợ mô hình 3D (.glb, .gltf), bản vẽ/ảnh (.pdf, .jpg, .png)</p>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <input id="pfFileInput" type="file" accept=".glb,.gltf,.pdf,.jpg,.jpeg,.png,.webp,.dwg"
+                    style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:7px; color:var(--text); font-size:12px;">
+                  <button class="btn btn-primary" style="padding:8px 14px; font-size:12px;" onclick="uploadProjectFile()">⬆ Tải lên</button>
+                </div>
+              </div>
+              <p id="pfUploadStatus" style="font-size:12px; color:var(--muted); min-height:14px;"></p>
+              <div id="pfList" style="display:flex; flex-direction:column; gap:10px;"></div>
             </div>
           </div>
         </div>
@@ -361,6 +382,27 @@
   </div>
 </div>
 
+<div id="modal3DViewer" class="modal-bg hidden">
+  <div class="card modal" style="max-width:900px; width:95%; padding:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="margin:0; font-size:14px;" id="viewer3DTitle">Mô hình 3D</h3>
+      <button class="btn btn-ghost" style="padding:6px 12px; font-size:12px;" onclick="close3DViewer()">Đóng</button>
+    </div>
+    <div id="viewer3DContainer" style="width:100%; height:60vh; border-radius:14px; overflow:hidden; background:#000;"></div>
+    <p style="font-size:11px; color:var(--muted); margin:8px 0 0;">Kéo để xoay · Cuộn để zoom · Chuột phải để di chuyển</p>
+  </div>
+</div>
+
+<div id="modalDrawingViewer" class="modal-bg hidden">
+  <div class="card modal" style="max-width:900px; width:95%; padding:16px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h3 style="margin:0; font-size:14px;" id="drawingViewerTitle">Bản vẽ</h3>
+      <button class="btn btn-ghost" style="padding:6px 12px; font-size:12px;" onclick="closeModal('modalDrawingViewer')">Đóng</button>
+    </div>
+    <div id="drawingViewerContainer" style="max-height:70vh; overflow:auto; text-align:center;"></div>
+  </div>
+</div>
+
 <script>
 let sb = null;
 let currentProjectId = null;
@@ -509,6 +551,7 @@ function switchDetailTab(btn,id){
   btn.classList.add('active');
   document.querySelectorAll('.detail-tab').forEach(t=>t.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
+  if(id==='d-files') loadProjectFiles(currentProjectId);
 }
 
 function wbsStatusBadge(status){
@@ -904,6 +947,140 @@ async function deleteComponent(id){
   if(error){ alert(error.message); return; }
   loadComponents(currentComponentWbsId);
   loadWbs(currentProjectId);
+}
+
+// ---- BẢN VẼ / MÔ HÌNH 3D CẤP DỰ ÁN ----
+function detectFileType(name){
+  const ext = name.split('.').pop().toLowerCase();
+  if(['glb','gltf'].includes(ext)) return 'model3d';
+  if(['pdf','jpg','jpeg','png','webp'].includes(ext)) return 'drawing';
+  return 'other';
+}
+function fileTypeBadge(type){
+  const map = { model3d:['🧊 Mô hình 3D','b-warning'], drawing:['🖼 Bản vẽ','b-success'], other:['📄 Tài liệu','b-muted'] };
+  const [label,cls] = map[type]||map.other;
+  return `<span class="badge ${cls}" style="font-size:11px; padding:3px 9px;">${label}</span>`;
+}
+
+async function loadProjectFiles(projectId){
+  if(!projectId) return;
+  const { data, error } = await sb.from('project_files').select('*').eq('project_id', projectId).order('created_at', {ascending:false});
+  if(error){ document.getElementById('pfList').innerHTML = `<p style="color:var(--danger); font-size:12px;">${error.message}</p>`; return; }
+  document.getElementById('pfList').innerHTML = (data||[]).length ? data.map(f=>{
+    const { data: pub } = sb.storage.from('attachments').getPublicUrl(f.file_path);
+    return `
+    <div class="row-item">
+      <div class="row-left">
+        <div><div class="name">${f.file_name}</div><div class="sub">${fileTypeBadge(f.file_type)}</div></div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        ${f.file_type==='model3d'
+          ? `<button class="btn btn-ghost" style="font-size:12px; padding:6px 12px;" onclick="open3DViewer('${pub.publicUrl}','${f.file_name.replace(/'/g,"")}')">👁 Xem 3D</button>`
+          : `<button class="btn btn-ghost" style="font-size:12px; padding:6px 12px;" onclick="openDrawingViewer('${pub.publicUrl}','${f.file_name.replace(/'/g,"")}','${f.file_type}')">👁 Xem</button>`
+        }
+        <button onclick="deleteProjectFile('${f.id}','${f.file_path}')" style="background:none;border:none;color:var(--muted);" title="Xóa">🗑</button>
+      </div>
+    </div>`;
+  }).join('') : `<p style="color:var(--muted); font-size:13px;">Chưa có bản vẽ hoặc mô hình 3D nào.</p>`;
+}
+
+async function uploadProjectFile(){
+  const fileInput = document.getElementById('pfFileInput');
+  const file = fileInput.files[0];
+  if(!file || !currentProjectId) return;
+  document.getElementById('pfUploadStatus').textContent = 'Đang tải lên...';
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+  const filePath = `project/${currentProjectId}/${Date.now()}_${safeName}`;
+  const fileType = detectFileType(file.name);
+
+  const { error: upErr } = await sb.storage.from('attachments').upload(filePath, file);
+  if(upErr){ document.getElementById('pfUploadStatus').textContent = 'Lỗi: ' + upErr.message; return; }
+
+  const { data: userData } = await sb.auth.getUser();
+  const { error: dbErr } = await sb.from('project_files').insert({
+    project_id: currentProjectId, file_name: file.name, file_path: filePath, file_type: fileType, uploaded_by: userData?.user?.id
+  });
+  if(dbErr){ document.getElementById('pfUploadStatus').textContent = 'Lỗi: ' + dbErr.message; return; }
+
+  document.getElementById('pfUploadStatus').textContent = 'Tải lên thành công!';
+  fileInput.value = '';
+  loadProjectFiles(currentProjectId);
+}
+
+async function deleteProjectFile(id, filePath){
+  if(!confirm('Xóa file này?')) return;
+  await sb.storage.from('attachments').remove([filePath]);
+  const { error } = await sb.from('project_files').delete().eq('id', id);
+  if(error){ alert(error.message); return; }
+  loadProjectFiles(currentProjectId);
+}
+
+// ---- Xem bản vẽ (ảnh / PDF) ----
+function openDrawingViewer(url, name, type){
+  document.getElementById('drawingViewerTitle').textContent = name;
+  const container = document.getElementById('drawingViewerContainer');
+  if(/\.(pdf)$/i.test(name)){
+    container.innerHTML = `<iframe src="${url}" style="width:100%; height:65vh; border:none; border-radius:10px;"></iframe>`;
+  } else {
+    container.innerHTML = `<img src="${url}" style="max-width:100%; max-height:65vh; border-radius:10px;">`;
+  }
+  openModal('modalDrawingViewer');
+}
+
+// ---- Xem mô hình 3D (Three.js) ----
+function open3DViewer(url, name){
+  document.getElementById('viewer3DTitle').textContent = name;
+  openModal('modal3DViewer');
+
+  const container = document.getElementById('viewer3DContainer');
+  container.innerHTML = '';
+  const width = container.clientWidth, height = container.clientHeight;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0d0b14);
+  const camera = new THREE.PerspectiveCamera(50, width/height, 0.1, 2000);
+  const renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setSize(width, height);
+  container.appendChild(renderer.domElement);
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  dirLight.position.set(5,10,7);
+  scene.add(dirLight);
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+
+  const loader = new THREE.GLTFLoader();
+  loader.load(url, (gltf)=>{
+    const model = gltf.scene;
+    scene.add(model);
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3()).length();
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.sub(center);
+    camera.position.set(size*0.6, size*0.4, size*0.6);
+    camera.lookAt(0,0,0);
+    controls.target.set(0,0,0);
+    controls.update();
+  }, undefined, (err)=>{
+    container.innerHTML = `<p style="color:var(--danger); padding:20px; font-size:13px;">Không tải được mô hình 3D: ${err?.message||'định dạng không hỗ trợ'}</p>`;
+  });
+
+  function animate(){
+    if(!document.getElementById('modal3DViewer').classList.contains('hidden')){
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+  }
+  animate();
+}
+
+function close3DViewer(){
+  closeModal('modal3DViewer');
+  document.getElementById('viewer3DContainer').innerHTML = '';
 }
 
 let repCharts = {};
