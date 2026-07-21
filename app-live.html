@@ -336,6 +336,31 @@
   </div>
 </div>
 
+<div id="modalComponents" class="modal-bg hidden">
+  <div class="card modal" style="max-width:520px;">
+    <h3 style="margin:0 0 4px; font-size:15px;">🧱 Cấu kiện</h3>
+    <p style="margin:0 0 6px; font-size:12px; color:var(--muted);" id="compTaskName"></p>
+    <p style="margin:0 0 16px; font-size:13px; font-weight:600;" id="compSummary"></p>
+
+    <div id="compList" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px; max-height:240px; overflow-y:auto;"></div>
+
+    <div style="border-top:1px solid var(--border); padding-top:14px;">
+      <p style="margin:0 0 10px; font-size:12px; color:var(--muted); font-weight:600;">Thêm loại cấu kiện mới</p>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <input id="compCode" placeholder="Mã (VD: C1)" style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:9px 11px; color:var(--text); font-size:13px;">
+        <input id="compAxis" placeholder="Vị trí trục (VD: X2 · Y5)" style="flex:1.4; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:9px 11px; color:var(--text); font-size:13px;">
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:10px;">
+        <input id="compTotal" type="number" placeholder="Tổng số lượng" style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:9px 11px; color:var(--text); font-size:13px;">
+        <input id="compInstalled" type="number" placeholder="Đã lắp đặt" value="0" style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:9px 11px; color:var(--text); font-size:13px;">
+      </div>
+      <button class="btn btn-primary" style="width:100%;" onclick="addComponent()">+ Thêm cấu kiện</button>
+    </div>
+
+    <button class="btn btn-ghost" style="width:100%; margin-top:10px;" onclick="closeModal('modalComponents')">Đóng</button>
+  </div>
+</div>
+
 <script>
 let sb = null;
 let currentProjectId = null;
@@ -504,12 +529,32 @@ async function loadWbs(projectId){
   const roots = data.filter(w => !w.parent_id);
   const childrenOf = (id) => data.filter(w => w.parent_id === id);
 
+  // Lấy dữ liệu cấu kiện của toàn bộ công việc trong dự án, gộp theo wbs_item_id
+  const allIds = data.map(w=>w.id);
+  const { data: comps } = allIds.length ? await sb.from('wbs_components').select('*').in('wbs_item_id', allIds) : { data: [] };
+  const compStats = {};
+  (comps||[]).forEach(c=>{
+    if(!compStats[c.wbs_item_id]) compStats[c.wbs_item_id] = { total:0, installed:0, types:0 };
+    compStats[c.wbs_item_id].total += Number(c.quantity_total||0);
+    compStats[c.wbs_item_id].installed += Number(c.quantity_installed||0);
+    compStats[c.wbs_item_id].types += 1;
+  });
+  function effectiveActual(item){
+    const s = compStats[item.id];
+    return (s && s.total>0) ? Math.round(s.installed/s.total*100) : item.actual_percent;
+  }
+  function compBadge(item){
+    const s = compStats[item.id];
+    return (s && s.total>0) ? `<div style="font-size:11px; color:var(--muted); margin-top:3px;">🧱 ${s.installed}/${s.total} cấu kiện (${s.types} loại)</div>` : '';
+  }
+
   document.getElementById('wbsList').innerHTML = roots.length ? roots.map(w=>{
     const children = childrenOf(w.id);
     const hasChildren = children.length > 0;
     const planned = hasChildren ? Math.round(children.reduce((a,c)=>a+Number(c.planned_percent),0)/children.length) : w.planned_percent;
-    const actual  = hasChildren ? Math.round(children.reduce((a,c)=>a+Number(c.actual_percent),0)/children.length) : w.actual_percent;
+    const actual  = hasChildren ? Math.round(children.reduce((a,c)=>a+effectiveActual(c),0)/children.length) : effectiveActual(w);
     const late = actual < planned - 10;
+    const wHasComp = compStats[w.id] && compStats[w.id].total>0;
     return `
     <div style="margin-bottom:18px; padding-bottom:18px; border-bottom:1px solid var(--border);">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; font-size:13px; margin-bottom:6px;">
@@ -518,12 +563,16 @@ async function loadWbs(projectId){
           ${w.name} ${hasChildren ? `<span style="color:var(--muted); font-weight:400;">(${children.length} đầu việc con)</span>` : ''}
           ${!hasChildren ? wbsStatusBadge(w.status) : ''}
           ${!hasChildren ? wbsMeta(w) : ''}
+          ${!hasChildren ? compBadge(w) : ''}
         </span>
         <span style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
           ${hasChildren
             ? `<span style="color:${late?'var(--danger)':'var(--text2)'};">${actual}% / ${planned}%</span>`
-            : `<input type="number" value="${w.actual_percent}" onchange="quickUpdateWbs('${w.id}','actual_percent',this.value)" style="width:52px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:4px 6px; color:var(--text); font-size:12px;"> % / ${w.planned_percent}%`
+            : wHasComp
+              ? `<span style="color:${late?'var(--danger)':'var(--text2)'};">${actual}% / ${w.planned_percent}%</span>`
+              : `<input type="number" value="${w.actual_percent}" onchange="quickUpdateWbs('${w.id}','actual_percent',this.value)" style="width:52px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:4px 6px; color:var(--text); font-size:12px;"> % / ${w.planned_percent}%`
           }
+          <button onclick="openComponentsModal('${w.id}','${w.name.replace(/'/g,"")}')" style="background:none;border:none;color:var(--muted);" title="Cấu kiện">🧱</button>
           <button onclick="openAttachmentsModal('${w.id}','${w.name.replace(/'/g,"")}')" style="background:none;border:none;color:var(--muted);" title="File đính kèm">📎</button>
           <button onclick="openNewWbsModal(null,'${w.id}')" style="background:none;border:none;color:var(--muted);" title="Sửa">✏️</button>
           <button onclick="deleteWbs('${w.id}')" style="background:none; border:none; color:var(--muted);" title="Xóa hạng mục">🗑</button>
@@ -532,25 +581,32 @@ async function loadWbs(projectId){
       <div class="progress-track"><div class="progress-fill" style="width:${actual}%; ${late ? 'background:linear-gradient(90deg,var(--danger),var(--warning));':''}"></div></div>
 
       <div id="children-${w.id}" class="hidden" style="margin-top:12px; margin-left:20px; display:flex; flex-direction:column; gap:12px;">
-        ${children.map(c=>`
+        ${children.map(c=>{
+          const cActual = effectiveActual(c);
+          const cHasComp = compStats[c.id] && compStats[c.id].total>0;
+          return `
           <div>
             <div style="display:flex; justify-content:space-between; align-items:flex-start; font-size:12px; margin-bottom:4px;">
-              <span>${c.name} ${wbsStatusBadge(c.status)}${wbsMeta(c)}</span>
+              <span>${c.name} ${wbsStatusBadge(c.status)}${wbsMeta(c)}${compBadge(c)}</span>
               <span style="display:flex; align-items:center; gap:6px; flex-shrink:0;">
                 <select onchange="quickUpdateWbsStatus('${c.id}', this.value)" style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:11px; padding:3px 4px;">
                   <option value="chua_lam" ${c.status==='chua_lam'?'selected':''}>Chưa làm</option>
                   <option value="dang_lam" ${c.status==='dang_lam'?'selected':''}>Đang làm</option>
                   <option value="hoan_thanh" ${c.status==='hoan_thanh'?'selected':''}>Hoàn thành</option>
                 </select>
-                <input type="number" value="${c.actual_percent}" onchange="quickUpdateWbs('${c.id}','actual_percent',this.value)" style="width:46px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:3px 5px; color:var(--text); font-size:11px;">%
+                ${cHasComp
+                  ? `<span style="font-size:11px; color:var(--text2);">${cActual}%</span>`
+                  : `<input type="number" value="${c.actual_percent}" onchange="quickUpdateWbs('${c.id}','actual_percent',this.value)" style="width:46px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:3px 5px; color:var(--text); font-size:11px;">%`
+                }
+                <button onclick="openComponentsModal('${c.id}','${c.name.replace(/'/g,"")}')" style="background:none;border:none;color:var(--muted); font-size:12px;" title="Cấu kiện">🧱</button>
                 <button onclick="openAttachmentsModal('${c.id}','${c.name.replace(/'/g,"")}')" style="background:none;border:none;color:var(--muted); font-size:12px;" title="File đính kèm">📎</button>
                 <button onclick="openNewWbsModal(null,'${c.id}')" style="background:none;border:none;color:var(--muted); font-size:12px;" title="Sửa">✏️</button>
                 <button onclick="deleteWbs('${c.id}')" style="background:none; border:none; color:var(--muted); font-size:12px;" title="Xóa">🗑</button>
               </span>
             </div>
-            <div class="progress-track" style="height:4px;"><div class="progress-fill" style="height:4px; width:${c.actual_percent}%;"></div></div>
+            <div class="progress-track" style="height:4px;"><div class="progress-fill" style="height:4px; width:${cActual}%;"></div></div>
           </div>
-        `).join('')}
+        `;}).join('')}
         <button class="btn btn-ghost" style="font-size:11px; padding:6px 12px; width:fit-content;" onclick="openNewWbsModal('${w.id}')">+ Thêm đầu việc con</button>
       </div>
     </div>
@@ -775,6 +831,79 @@ async function deleteAttachment(id, filePath){
   const { error } = await sb.from('wbs_attachments').delete().eq('id', id);
   if(error){ alert(error.message); return; }
   loadAttachments(currentAttachmentWbsId);
+}
+
+// ---- CẤU KIỆN THEO SỐ LƯỢNG + VỊ TRÍ TRỤC ----
+let currentComponentWbsId = null;
+
+async function openComponentsModal(wbsId, taskName){
+  currentComponentWbsId = wbsId;
+  document.getElementById('compTaskName').textContent = 'Công việc: ' + taskName;
+  document.getElementById('compCode').value = '';
+  document.getElementById('compAxis').value = '';
+  document.getElementById('compTotal').value = '';
+  document.getElementById('compInstalled').value = 0;
+  await loadComponents(wbsId);
+  openModal('modalComponents');
+}
+
+async function loadComponents(wbsId){
+  const { data, error } = await sb.from('wbs_components').select('*').eq('wbs_item_id', wbsId).order('created_at');
+  if(error){ document.getElementById('compList').innerHTML = `<p style="color:var(--danger); font-size:12px;">${error.message}</p>`; return; }
+
+  const total = (data||[]).reduce((a,c)=>a+Number(c.quantity_total||0),0);
+  const installed = (data||[]).reduce((a,c)=>a+Number(c.quantity_installed||0),0);
+  document.getElementById('compSummary').textContent = total>0
+    ? `Tổng: ${installed}/${total} cấu kiện đã lắp đặt (${Math.round(installed/total*100)}%)`
+    : 'Chưa có cấu kiện nào';
+
+  document.getElementById('compList').innerHTML = (data||[]).length ? data.map(c=>`
+    <div style="background:var(--surface2); border-radius:12px; padding:10px 12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <span style="font-size:13px; font-weight:600;">${c.code} <span style="font-weight:400; color:var(--muted); font-size:11px;">${c.axis_ref?('· '+c.axis_ref):''}</span></span>
+        <button onclick="deleteComponent('${c.id}')" style="background:none;border:none;color:var(--muted);" title="Xóa">🗑</button>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; font-size:12px;">
+        <input type="number" value="${c.quantity_installed}" onchange="quickUpdateComponent('${c.id}','quantity_installed',this.value)"
+          style="width:56px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:4px 6px; color:var(--text);">
+        <span style="color:var(--muted);">/</span>
+        <input type="number" value="${c.quantity_total}" onchange="quickUpdateComponent('${c.id}','quantity_total',this.value)"
+          style="width:56px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:4px 6px; color:var(--text);">
+        <span style="color:var(--muted);">đã lắp / tổng</span>
+      </div>
+      <div class="progress-track" style="margin-top:6px; height:4px;"><div class="progress-fill" style="height:4px; width:${c.quantity_total?Math.round(c.quantity_installed/c.quantity_total*100):0}%;"></div></div>
+    </div>
+  `).join('') : `<p style="color:var(--muted); font-size:12px;">Chưa có cấu kiện nào — thêm ở form bên dưới.</p>`;
+}
+
+async function addComponent(){
+  const code = document.getElementById('compCode').value.trim();
+  const axis_ref = document.getElementById('compAxis').value.trim();
+  const quantity_total = Number(document.getElementById('compTotal').value || 0);
+  const quantity_installed = Number(document.getElementById('compInstalled').value || 0);
+  if(!code || !currentComponentWbsId) return;
+  const { error } = await sb.from('wbs_components').insert({ wbs_item_id: currentComponentWbsId, code, axis_ref, quantity_total, quantity_installed });
+  if(error){ alert(error.message); return; }
+  document.getElementById('compCode').value=''; document.getElementById('compAxis').value='';
+  document.getElementById('compTotal').value=''; document.getElementById('compInstalled').value=0;
+  loadComponents(currentComponentWbsId);
+  loadWbs(currentProjectId);
+}
+
+async function quickUpdateComponent(id, field, value){
+  const payload = {}; payload[field] = Number(value)||0;
+  const { error } = await sb.from('wbs_components').update(payload).eq('id', id);
+  if(error){ alert(error.message); return; }
+  loadComponents(currentComponentWbsId);
+  loadWbs(currentProjectId);
+}
+
+async function deleteComponent(id){
+  if(!confirm('Xóa cấu kiện này?')) return;
+  const { error } = await sb.from('wbs_components').delete().eq('id', id);
+  if(error){ alert(error.message); return; }
+  loadComponents(currentComponentWbsId);
+  loadWbs(currentProjectId);
 }
 
 let repCharts = {};
